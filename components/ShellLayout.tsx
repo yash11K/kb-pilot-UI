@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import IngestWizard from "@/components/IngestWizard";
+import { useActiveJobs } from "@/hooks/useActiveJobs";
 
 export default function ShellLayout({
   children,
@@ -10,6 +11,7 @@ export default function ShellLayout({
   children: React.ReactNode;
 }) {
   const [showIngestWizard, setShowIngestWizard] = useState(false);
+  const { mutate: activeJobsMutate } = useActiveJobs();
 
   return (
     <div
@@ -35,7 +37,10 @@ export default function ShellLayout({
       </main>
 
       {showIngestWizard && (
-        <IngestWizard onClose={() => setShowIngestWizard(false)} />
+        <IngestWizard
+          onClose={() => setShowIngestWizard(false)}
+          onComplete={() => activeJobsMutate()}
+        />
       )}
     </div>
   );

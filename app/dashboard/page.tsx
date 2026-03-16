@@ -14,7 +14,7 @@ export default function DashboardPage() {
   const { data: stats } = useStats();
   const router = useRouter();
   const [showIngestWizard, setShowIngestWizard] = useState(false);
-  const { activeJobs } = useActiveJobs();
+  const { activeJobs, mutate: activeJobsMutate } = useActiveJobs();
   const { data: recentSources } = useSources({ page: 1, size: 5 });
 
   const pending = stats?.pending_review ?? 0;
@@ -272,7 +272,10 @@ export default function DashboardPage() {
       </div>
 
       {showIngestWizard && (
-        <IngestWizard onClose={() => setShowIngestWizard(false)} />
+        <IngestWizard
+          onClose={() => setShowIngestWizard(false)}
+          onComplete={() => activeJobsMutate()}
+        />
       )}
     </>
   );
