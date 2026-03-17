@@ -17,6 +17,7 @@ import type {
   StartIngestionResponse,
   NavTree,
   DeepLink,
+  DeepLinkStatus,
 } from "./types";
 
 const BASE =
@@ -217,6 +218,16 @@ export async function fetchNavTree(url: string, forceRefresh = false): Promise<N
 }
 
 // ── Deep Links ──────────────────────────────────────────────
+
+export async function getAllDeepLinks(status?: DeepLinkStatus): Promise<PaginatedResponse<DeepLink>> {
+  const qs = buildQueryString({ status });
+  const res = await fetch(`${BASE}/deep-links${qs}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to load deep links (${res.status})`);
+  }
+  return res.json();
+}
 
 export async function getDeepLinks(sourceId: string, status = "pending"): Promise<DeepLink[]> {
   const qs = buildQueryString({ status });

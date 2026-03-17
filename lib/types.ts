@@ -189,16 +189,26 @@ export interface NavTree {
 
 // ── Deep Link Types ──────────────────────────────────────────
 
+export type DeepLinkStatus = "pending" | "confirmed" | "dismissed" | "ingested";
+
 export interface DeepLink {
   id: string;
+  source_id?: string;
   url: string;
   model_json_url: string;
   anchor_text: string | null;
   found_in_node: string | null;
   found_in_page: string;
-  status: "pending" | "confirmed" | "dismissed" | "ingested";
+  status: DeepLinkStatus;
   created_at: string;
 }
+
+export const DEEP_LINK_STATUS_CONFIG: Record<DeepLinkStatus, { label: string; color: string; bg: string }> = {
+  pending:   { label: "Pending",   color: "#d97706", bg: "#fffbeb" },
+  confirmed: { label: "Confirmed", color: "#7c3aed", bg: "#f3f0ff" },
+  ingested:  { label: "Ingested",  color: "#16a34a", bg: "#f0fdf4" },
+  dismissed: { label: "Dismissed", color: "#6b7280", bg: "#f3f4f6" },
+};
 
 export interface ActionResponse {
   success: boolean;

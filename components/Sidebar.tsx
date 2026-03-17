@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Inbox, File, Menu, Upload, Globe } from "lucide-react";
+import { House, Inbox, File, Menu, Upload, Globe, Compass } from "lucide-react";
 import { useStats } from "@/hooks/useStats";
 
 interface SidebarProps {
@@ -13,6 +13,7 @@ interface SidebarProps {
 const NAV_ITEMS = [
   { label: "Dashboard", icon: House, path: "/dashboard" },
   { label: "Sources", icon: Globe, path: "/sources" },
+  { label: "Discovery", icon: Compass, path: "/discovery" },
   { label: "Review Queue", icon: Inbox, path: "/queue" },
   { label: "All Files", icon: File, path: "/files" },
 ] as const;
