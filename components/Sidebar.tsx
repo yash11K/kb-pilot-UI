@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { House, Inbox, File, Menu, Upload, Globe, Compass } from "lucide-react";
+import { House, File, Menu, Upload, Globe, Compass, Search } from "lucide-react";
 import { useStats } from "@/hooks/useStats";
 
 interface SidebarProps {
@@ -14,8 +14,8 @@ const NAV_ITEMS = [
   { label: "Dashboard", icon: House, path: "/dashboard" },
   { label: "Sources", icon: Globe, path: "/sources" },
   { label: "Discovery", icon: Compass, path: "/discovery" },
-  { label: "Review Queue", icon: Inbox, path: "/queue" },
-  { label: "All Files", icon: File, path: "/files" },
+  { label: "KB", icon: Search, path: "/kb" },
+  { label: "Files", icon: File, path: "/files" },
 ] as const;
 
 const STORAGE_KEY = "sidebar-collapsed";
@@ -144,7 +144,7 @@ export default function Sidebar({ onNewIngestion }: SidebarProps) {
                 <span className="sidebar-label" style={{ whiteSpace: "nowrap" }}>{item.label}</span>
               )}
               {expanded &&
-                item.path === "/queue" &&
+                item.path === "/files" &&
                 mounted &&
                 stats &&
                 stats.pending_review > 0 && (

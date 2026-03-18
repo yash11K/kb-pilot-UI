@@ -269,3 +269,99 @@ export async function dismissDeepLinks(
     throw new Error(body.detail || `Failed to dismiss deep links (${res.status})`);
   }
 }
+
+// ── Knowledge Base ──────────────────────────────────────────
+
+/**
+ * Stream SSE from a POST endpoint.
+ * Returns an AbortController so the caller can cancel.
+ */
+export function streamSSE(
+  url: string,
+  body: object,
+  onEvent: (event: string, data: string) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): AbortController {
+  const ctrl = new AbortController();
+
+  (async () => {
+    try {
+      const res = await fetch(`${BASE}${url}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Request failed (${res.status})`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No response body");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        let currentEvent = "message";
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            onEvent(currentEvent, line.slice(5).trim());
+            currentEvent = "message";
+          }
+        }
+      }
+
+      onDone?.();
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      onError?.(err as Error);
+    }
+  })();
+
+  return ctrl;
+}
+
+export function kbSearch(
+  query: string,
+  limit = 10,
+  onResult: (data: string) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): AbortController {
+  return streamSSE(
+    "/kb/search",
+    { query, limit },
+    (_event, data) => onResult(data),
+    onDone,
+    onError,
+  );
+}
+
+export function kbChat(
+  query: string,
+  contextLimit = 5,
+  onToken: (data: string) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): AbortController {
+  return streamSSE(
+    "/kb/chat",
+    { query, context_limit: contextLimit },
+    (_event, data) => onToken(data),
+    onDone,
+    onError,
+  );
+}

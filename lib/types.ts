@@ -231,7 +231,9 @@ export interface QueueFilters {
 
 export interface FileFilters extends QueueFilters {
   status?: FileStatus;
+  source_id?: string;
 }
+
 
 // ── Design System Constants ──────────────────────────────────
 
@@ -376,3 +378,67 @@ export const AGENT_COLORS: Record<string, { color: string; bg: string }> = {
   extractor: { color: "#0891b2", bg: "#ecfeff" },
   validator: { color: "#d97706", bg: "#fffbeb" },
 };
+
+// ── Agentic Task View Types ─────────────────────────────────
+
+export interface URLTask {
+  url: string;
+  depth: number;
+  status: "crawling" | "completed" | "skipped" | "error";
+  startedAt: Date;
+  completedAt?: Date;
+  filesExtracted?: number;
+  newChildUrls?: number;
+  skipReason?: string;
+  errorMessage?: string;
+  steps: AgentStep[];
+}
+
+export interface AgentStep {
+  id: string;
+  stage: string;
+  agent?: "extractor" | "validator";
+  label: string;
+  status: "active" | "completed" | "error";
+  startedAt: Date;
+  completedAt?: Date;
+  toolCalls: ToolCallEntry[];
+  thinkingText: string;
+  fileResults: FileResult[];
+}
+
+export interface ToolCallEntry {
+  id: string;
+  agent: string;
+  tool: string;
+  label: string;
+  timestamp: Date;
+}
+
+export interface FileResult {
+  filename: string;
+  status: string;
+  score?: number;
+}
+
+export const AGENT_IDENTITY: Record<string, { name: string; model: string; icon: string }> = {
+  extractor: { name: "Extractor Agent", model: "Sonnet", icon: "E" },
+  validator: { name: "Validator Agent", model: "Sonnet", icon: "V" },
+};
+
+export const SYSTEM_STEP_IDENTITY = { name: "Pipeline", model: "", icon: "P" };
+
+// ── Knowledge Base Types ────────────────────────────────────
+
+export interface KBSearchResult {
+  title: string;
+  excerpt: string;
+  score: number;
+  source_url?: string;
+  file_id?: string;
+}
+
+export interface KBChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}

@@ -1,10 +1,9 @@
 "use client";
 
 import { Search, Layers, ChevronDown } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 interface FilterBarProps {
-  activeTab: "queue" | "files";
+  activeTab: "pending" | "all";
   filters: {
     search?: string;
     region?: string;
@@ -14,6 +13,7 @@ interface FilterBarProps {
   };
   onFilterChange: (key: string, value: string) => void;
   onSearch: (value: string) => void;
+  onTabChange: (tab: "pending" | "all") => void;
   onSpeedReview?: () => void;
   pendingCount?: number;
   showStatusFilter?: boolean;
@@ -76,12 +76,11 @@ export default function FilterBar({
   filters,
   onFilterChange,
   onSearch,
+  onTabChange,
   onSpeedReview,
   pendingCount,
   showStatusFilter,
 }: FilterBarProps) {
-  const router = useRouter();
-
   return (
     <div
       style={{
@@ -96,29 +95,29 @@ export default function FilterBar({
       {/* Left side: tabs + speed review */}
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <button
-          onClick={() => router.push("/queue")}
+          onClick={() => onTabChange("pending")}
           style={{
             padding: "8px 18px",
             borderRadius: 10,
-            background: activeTab === "queue" ? "#7c3aed" : "#fff",
-            color: activeTab === "queue" ? "#fff" : "#6b7280",
-            border: activeTab === "queue" ? "none" : "1.5px solid #e5e7eb",
+            background: activeTab === "pending" ? "#7c3aed" : "#fff",
+            color: activeTab === "pending" ? "#fff" : "#6b7280",
+            border: activeTab === "pending" ? "none" : "1.5px solid #e5e7eb",
             fontSize: 13,
             fontWeight: 600,
             cursor: "pointer",
             fontFamily: "inherit",
           }}
         >
-          Review Queue
+          Pending Review
         </button>
         <button
-          onClick={() => router.push("/files")}
+          onClick={() => onTabChange("all")}
           style={{
             padding: "8px 18px",
             borderRadius: 10,
-            background: activeTab === "files" ? "#7c3aed" : "#fff",
-            color: activeTab === "files" ? "#fff" : "#6b7280",
-            border: activeTab === "files" ? "none" : "1.5px solid #e5e7eb",
+            background: activeTab === "all" ? "#7c3aed" : "#fff",
+            color: activeTab === "all" ? "#fff" : "#6b7280",
+            border: activeTab === "all" ? "none" : "1.5px solid #e5e7eb",
             fontSize: 13,
             fontWeight: 600,
             cursor: "pointer",

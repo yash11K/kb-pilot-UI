@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { Compass, RefreshCw, Send, XCircle, ExternalLink, ChevronDown } from "lucide-react";
+import Link from "next/link";
+import { Compass, RefreshCw, Send, XCircle, ExternalLink, ChevronDown, Globe } from "lucide-react";
 import { useDiscoveryLinks } from "@/hooks/useDiscoveryLinks";
 import { confirmDeepLinks, dismissDeepLinks } from "@/lib/api";
 import { useToast } from "@/components/Toast";
@@ -420,9 +421,22 @@ export default function DiscoveryPage() {
                     whiteSpace: "nowrap",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
                   }}
                   title={link.found_in_page}
                 >
+                  {link.source_id && (
+                    <Link
+                      href={`/sources/${link.source_id}?tab=deep-links`}
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ color: "#7c3aed", flexShrink: 0 }}
+                      aria-label="View source"
+                    >
+                      <Globe size={12} />
+                    </Link>
+                  )}
                   {link.found_in_page.replace(/^https?:\/\/[^/]+/, "").replace(/\.model\.json$/, "")}
                 </div>
                 <div>
