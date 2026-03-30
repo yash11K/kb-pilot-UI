@@ -52,12 +52,43 @@ function KBSearchTab() {
     ctrlRef.current = kbSearch(
       query,
       10,
-      (data) => {
+      (event, data) => {
+        if (event !== "result") return;
         try {
-          const result = JSON.parse(data) as KBSearchResult;
+          const raw = JSON.parse(data);
+          // Extract title from YAML frontmatter in content
+          let title = "";
+          let excerpt = raw.content || "";
+          const fmMatch = excerpt.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+          if (fmMatch) {
+            const frontmatter = fmMatch[1];
+            const body = fmMatch[2];
+            const titleMatch = frontmatter.match(/^title:\s*(.+)$/m);
+            if (titleMatch) title = titleMatch[1].trim();
+            excerpt = body.trim();
+          }
+          // Truncate excerpt for display
+          excerpt = excerpt.replace(/^#+\s+.*\n?/gm, "").trim();
+          if (excerpt.length > 300) {
+            excerpt = excerpt.slice(0, 300).trimEnd() + "…";
+          }
+          // Extract source_url from frontmatter or s3_uri
+          let sourceUrl = "";
+          if (fmMatch) {
+            const srcMatch = fmMatch[1].match(/^source_url:\s*(.+)$/m);
+            if (srcMatch) sourceUrl = srcMatch[1].trim();
+          }
+          if (!sourceUrl && raw.s3_uri) sourceUrl = raw.s3_uri;
+
+          const result: KBSearchResult = {
+            title: title || "Untitled",
+            excerpt,
+            score: raw.score ?? 0,
+            source_url: sourceUrl || undefined,
+          };
           setResults((prev) => [...prev, result]);
         } catch {
-          // Token or non-JSON data — ignore
+          // Non-JSON or malformed — ignore
         }
       },
       () => setIsStreaming(false),

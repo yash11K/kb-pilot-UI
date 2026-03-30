@@ -353,14 +353,14 @@ export function streamSSE(
 export function kbSearch(
   query: string,
   limit = 10,
-  onResult: (data: string) => void,
+  onResult: (event: string, data: string) => void,
   onDone?: () => void,
   onError?: (err: Error) => void,
 ): AbortController {
   return streamSSE(
     "/kb/search",
     { query, limit },
-    (_event, data) => onResult(data),
+    (event, data) => onResult(event, data),
     onDone,
     onError,
   );
