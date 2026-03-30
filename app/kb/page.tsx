@@ -5,40 +5,29 @@ import { Search, Sparkles, Send, Loader2, X, RotateCw } from "lucide-react";
 import ScorePill from "@/components/ScorePill";
 import MdPreview from "@/components/MdPreview";
 import { kbSearch, kbChat } from "@/lib/api";
-import type { KBSearchResult, KBChatMessage } from "@/lib/types";
 
 type Mode = "retrieve" | "generate";
 
 interface ParsedResult {
-  title: string;
-  excerpt: string;
+  content: string;
   score: number;
   source_url?: string;
 }
 
 function parseSearchResult(raw: Record<string, unknown>): ParsedResult {
-  let title = "";
-  let excerpt = (raw.content as string) || "";
-  const fmMatch = excerpt.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  const content = (raw.content as string) || "";
+  let sourceUrl = "";
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (fmMatch) {
-    const frontmatter = fmMatch[1];
-    const body = fmMatch[2];
-    const titleMatch = frontmatter.match(/^title:\s*(.+)$/m);
-    if (titleMatch) title = titleMatch[1].trim();
-    const srcMatch = frontmatter.match(/^source_url:\s*(.+)$/m);
-    excerpt = body.replace(/^#+\s+.*\n?/gm, "").trim();
-    return {
-      title: title || "Untitled",
-      excerpt: excerpt.length > 280 ? excerpt.slice(0, 280).trimEnd() + "…" : excerpt,
-      score: (raw.score as number) ?? 0,
-      source_url: srcMatch?.[1]?.trim() || (raw.s3_uri as string) || undefined,
-    };
+    const srcMatch = fmMatch[1].match(/^source_url:\s*(.+)$/m);
+    if (srcMatch) sourceUrl = srcMatch[1].trim();
   }
+  if (!sourceUrl && raw.s3_uri) sourceUrl = raw.s3_uri as string;
+
   return {
-    title: "Untitled",
-    excerpt: excerpt.length > 280 ? excerpt.slice(0, 280).trimEnd() + "…" : excerpt,
+    content,
     score: (raw.score as number) ?? 0,
-    source_url: (raw.s3_uri as string) || undefined,
+    source_url: sourceUrl || undefined,
   };
 }
 
@@ -228,24 +217,25 @@ export default function KBPage() {
                 {msg.content}
               </div>
             ) : msg.results && msg.results.length > 0 ? (
-              <div style={{ maxWidth: "85%", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, marginBottom: 2 }}>{msg.content}</div>
+              /* Retrieve-only: numbered results in a single bubble */
+              <div style={{ maxWidth: "90%", padding: "16px 20px", borderRadius: "16px 16px 16px 4px", background: "#fff", border: "1px solid #ede9fe", fontSize: 14, lineHeight: 1.7, color: "#111827", wordBreak: "break-word" }}>
+                <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, marginBottom: 12 }}>{msg.content}</div>
                 {msg.results.map((r, ri) => (
-                  <div
-                    key={ri}
-                    style={{ background: "#fff", borderRadius: 12, border: "1px solid #ede9fe", padding: "14px 16px", transition: "box-shadow 0.15s" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 2px 12px rgba(124,58,237,0.08)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "none"; }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>{r.title}</div>
+                  <div key={ri} style={{ marginBottom: ri < msg.results!.length - 1 ? 16 : 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>{ri + 1}.</span>
                       <ScorePill score={r.score} />
+                      {r.source_url && (
+                        <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                          {r.source_url}
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: 13, color: "#4b5563", lineHeight: 1.6 }}>{r.excerpt}</div>
-                    {r.source_url && (
-                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 8, fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {r.source_url}
-                      </div>
+                    <div style={{ paddingLeft: 18 }}>
+                      <MdPreview content={r.content} />
+                    </div>
+                    {ri < msg.results!.length - 1 && (
+                      <div style={{ borderBottom: "1px solid #f3f4f6", margin: "12px 0 0" }} />
                     )}
                   </div>
                 ))}
