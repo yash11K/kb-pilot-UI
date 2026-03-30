@@ -9,52 +9,14 @@ interface MdPreviewProps {
 
 export default function MdPreview({ content }: MdPreviewProps) {
   const parts = content.split("---");
-  let frontmatter = "";
   let body = content;
 
   if (parts.length >= 3) {
-    frontmatter = parts[1].trim();
     body = parts.slice(2).join("---").trim();
   }
 
   return (
     <div>
-      {frontmatter && (
-        <div
-          style={{
-            background: "#faf5ff",
-            border: "1px solid #e9d5ff",
-            borderRadius: 10,
-            padding: 14,
-            marginBottom: 14,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              color: "#9333ea",
-              marginBottom: 6,
-            }}
-          >
-            YAML Frontmatter
-          </div>
-          <pre
-            style={{
-              fontFamily: "var(--font-dm-mono), 'DM Mono', monospace",
-              fontSize: 11.5,
-              color: "#6b21a8",
-              lineHeight: 1.8,
-              whiteSpace: "pre-wrap",
-              margin: 0,
-            }}
-          >
-            {frontmatter}
-          </pre>
-        </div>
-      )}
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

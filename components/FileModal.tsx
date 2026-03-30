@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSWRConfig } from "swr";
-import { X, Check, Edit, RotateCw } from "lucide-react";
+import { X, Edit, ExternalLink } from "lucide-react";
 import Badge from "@/components/Badge";
 import ScorePill from "@/components/ScorePill";
-import ScoreBreakdown from "@/components/ScoreBreakdown";
 import MdPreview from "@/components/MdPreview";
-import { STATUS_CONFIG, scoreColor, scoreBg } from "@/lib/types";
+import FileDetailsCollapsible from "@/components/FileDetailsCollapsible";
+import { STATUS_CONFIG } from "@/lib/types";
 import { useFileDetail } from "@/hooks/useFileDetail";
 import { acceptFile, rejectFile, updateFileContent, revalidateFile } from "@/lib/api";
 import { useToast } from "@/components/Toast";
@@ -38,6 +39,7 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
 
   const { mutate: globalMutate } = useSWRConfig();
   const { showToast } = useToast();
+  const router = useRouter();
   const { data, error: fileError, isLoading: fileLoading, mutate: mutateFileDetail } = useFileDetail(fileId, source);
   const file = data;
 
@@ -292,22 +294,46 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
                     {fmtDate(file.created_at)}
                   </div>
                 </div>
-                <button
-                  onClick={onClose}
-                  style={{
-                    background: "#f3f4f6",
-                    border: "none",
-                    borderRadius: 10,
-                    width: 36,
-                    height: 36,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <X size={16} color="#6b7280" />
-                </button>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {file.source_id && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        router.push(`/sources/${file.source_id}/files/${file.id}`);
+                      }}
+                      title="Open full view"
+                      style={{
+                        background: "#f3f0ff",
+                        border: "none",
+                        borderRadius: 10,
+                        width: 36,
+                        height: 36,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <ExternalLink size={15} color="#7c3aed" />
+                    </button>
+                  )}
+                  <button
+                    onClick={onClose}
+                    style={{
+                      background: "#f3f4f6",
+                      border: "none",
+                      borderRadius: 10,
+                      width: 36,
+                      height: 36,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <X size={16} color="#6b7280" />
+                  </button>
+                </div>
               </div>
 
               {/* Body */}
@@ -420,332 +446,31 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
                   )}
                 </div>
 
-                {/* Right panel: Meta & Actions */}
+                {/* Right panel: Details + Context Agent */}
                 <div
                   className="modal-right-panel"
                   style={{
                     width: 300,
                     padding: 24,
-                    overflow: "auto",
                     flexShrink: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    height: "100%",
+                    overflow: "auto",
                   }}
                 >
-                  {/* Validation Score */}
-                  <div style={{ marginBottom: 24 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "#4b5563",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        marginBottom: 12,
-                      }}
-                    >
-                      Validation Score
-                    </div>
-                    <div
-                      style={{
-                        textAlign: "center",
-                        padding: "16px 0",
-                        marginBottom: 16,
-                        background: scoreBg(file.validation_score),
-                        borderRadius: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 36,
-                          fontWeight: 800,
-                          color: scoreColor(file.validation_score),
-                        }}
-                      >
-                        {Math.round(file.validation_score * 100)}%
-                      </div>
-                    </div>
-                    <ScoreBreakdown breakdown={file.validation_breakdown} />
-                    <button
-                      onClick={handleRevalidate}
-                      disabled={revalidating}
-                      style={{
-                        marginTop: 14,
-                        width: "100%",
-                        padding: "9px 0",
-                        background: revalidating ? "#f3f4f6" : "#f3f0ff",
-                        color: revalidating ? "#9ca3af" : "#7c3aed",
-                        border: "none",
-                        borderRadius: 8,
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: revalidating ? "default" : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                      }}
-                    >
-                      <RotateCw
-                        size={13}
-                        style={
-                          revalidating
-                            ? { animation: "spin 0.8s linear infinite" }
-                            : undefined
-                        }
-                      />
-                      {revalidating ? "Revalidating…" : "Revalidate"}
-                    </button>
-                  </div>
-
-                  {/* Issues */}
-                  {file.validation_issues?.length > 0 && (
-                    <div style={{ marginBottom: 24 }}>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#4b5563",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.06em",
-                          marginBottom: 8,
-                        }}
-                      >
-                        Issues
-                      </div>
-                      {file.validation_issues?.map((iss, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            padding: "8px 12px",
-                            background: "#fffbeb",
-                            border: "1px solid #fde68a",
-                            borderRadius: 8,
-                            fontSize: 12,
-                            color: "#92400e",
-                            marginBottom: 6,
-                          }}
-                        >
-                          ⚠ {iss}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Source metadata */}
-                  <div style={{ marginBottom: 24 }}>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "#4b5563",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.06em",
-                        marginBottom: 8,
-                      }}
-                    >
-                      Source
-                    </div>
-                    {(
-                      [
-                        [
-                          "AEM URL",
-                          file.source_url?.split("/").slice(-2).join("/"),
-                        ],
-                        [
-                          "Component",
-                          file.component_type?.split("/").pop(),
-                        ],
-                        ["Node ID", file.aem_node_id],
-                        ["S3 Key", file.s3_key || "—"],
-                      ] as [string, string][]
-                    ).map(([k, v]) => (
-                      <div
-                        key={k}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          padding: "5px 0",
-                          borderBottom: "1px solid #f3f4f6",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "#9ca3af",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {k}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "#374151",
-                            fontFamily:
-                              "var(--font-dm-mono), 'DM Mono', monospace",
-                            maxWidth: 160,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {v}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Reject form */}
-                  {showReject && (
-                    <div style={{ marginBottom: 16 }}>
-                      <textarea
-                        value={rejectNotes}
-                        onChange={(e) => setRejectNotes(e.target.value)}
-                        placeholder="Reason for rejection (required)..."
-                        style={{
-                          width: "100%",
-                          height: 80,
-                          border: "1.5px solid #fca5a5",
-                          borderRadius: 8,
-                          padding: 10,
-                          fontSize: 12,
-                          resize: "none",
-                          outline: "none",
-                          fontFamily: "inherit",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                      <div
-                        style={{ display: "flex", gap: 8, marginTop: 8 }}
-                      >
-                        <button
-                          onClick={handleReject}
-                          style={{
-                            flex: 1,
-                            padding: "8px 0",
-                            background: "#dc2626",
-                            color: "#fff",
-                            border: "none",
-                            borderRadius: 8,
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            opacity: rejectNotes.trim() ? 1 : 0.5,
-                          }}
-                        >
-                          Confirm Reject
-                        </button>
-                        <button
-                          onClick={() => setShowReject(false)}
-                          style={{
-                            padding: "8px 14px",
-                            background: "#f3f4f6",
-                            border: "none",
-                            borderRadius: 8,
-                            fontSize: 12,
-                            cursor: "pointer",
-                            color: "#6b7280",
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Action buttons */}
-                  {canAct && !showReject && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 8,
-                      }}
-                    >
-                      <button
-                        onClick={handleAccept}
-                        style={{
-                          padding: "12px 0",
-                          background: "#7c3aed",
-                          color: "#fff",
-                          border: "none",
-                          borderRadius: 10,
-                          fontSize: 14,
-                          fontWeight: 700,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 8,
-                          boxShadow: "0 2px 8px rgba(124,58,237,0.25)",
-                        }}
-                      >
-                        <Check size={16} color="#fff" /> Accept &amp; Push to S3
-                      </button>
-                      <button
-                        onClick={() => setShowReject(true)}
-                        style={{
-                          padding: "12px 0",
-                          background: "#fff",
-                          color: "#dc2626",
-                          border: "1.5px solid #fca5a5",
-                          borderRadius: 10,
-                          fontSize: 14,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 8,
-                        }}
-                      >
-                        <X size={16} color="#dc2626" /> Reject
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Reviewed by */}
-                  {file.reviewed_by && (
-                    <div
-                      style={{
-                        padding: "12px 14px",
-                        background: "#f9fafb",
-                        borderRadius: 10,
-                        marginTop: 12,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9ca3af",
-                          fontWeight: 600,
-                          marginBottom: 4,
-                        }}
-                      >
-                        Reviewed by
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          color: "#374151",
-                          fontWeight: 500,
-                        }}
-                      >
-                        {file.reviewed_by}
-                      </div>
-                      {file.review_notes && (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "#6b7280",
-                            marginTop: 6,
-                            fontStyle: "italic",
-                          }}
-                        >
-                          &ldquo;{file.review_notes}&rdquo;
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <FileDetailsCollapsible
+                    file={file}
+                    canAct={canAct}
+                    revalidating={revalidating}
+                    showReject={showReject}
+                    rejectNotes={rejectNotes}
+                    onRevalidate={handleRevalidate}
+                    onAccept={handleAccept}
+                    onReject={handleReject}
+                    onShowReject={setShowReject}
+                    onRejectNotesChange={setRejectNotes}
+                  />
                 </div>
               </div>
             </>

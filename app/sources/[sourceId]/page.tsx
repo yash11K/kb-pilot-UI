@@ -299,7 +299,8 @@ export default function SourceDetailPage() {
                   page={filePage}
                   totalPages={filesData?.pages ?? 1}
                   onPageChange={setFilePage}
-                  onRowClick={(file) => setSelectedFileId(file.id)}
+                  onRowClick={(file) => router.push(`/sources/${sourceId}/files/${file.id}`)}
+                  onQuickView={(file) => setSelectedFileId(file.id)}
                 />
               </div>
             </div>

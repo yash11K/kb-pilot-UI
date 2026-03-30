@@ -264,6 +264,9 @@ export default function SwipeRow({ file, onAccept, onReject, onClick, hideStatus
       >
         {fmtDate(file.created_at)}
       </td>
+
+      {/* Spacer for eye icon column */}
+      <td style={{ width: 40, transform: tx, transition: tr, zIndex: 2, background: "inherit" }} />
     </tr>
   );
 }

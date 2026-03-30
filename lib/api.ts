@@ -18,6 +18,7 @@ import type {
   NavTree,
   DeepLink,
   DeepLinkStatus,
+  UrlLookupResponse,
 } from "./types";
 
 const BASE =
@@ -205,6 +206,21 @@ export async function reIngestSource(sourceId: string): Promise<StartIngestionRe
   return res.json();
 }
 
+// ── Source URL Lookup ────────────────────────────────────────
+
+export async function lookupProcessedUrls(urls: string[]): Promise<UrlLookupResponse> {
+  const res = await fetch(`${BASE}/sources/lookup-urls`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to lookup URLs (${res.status})`);
+  }
+  return res.json();
+}
+
 // ── Navigation Tree ─────────────────────────────────────────
 
 export async function fetchNavTree(url: string, forceRefresh = false): Promise<NavTree> {
@@ -219,8 +235,8 @@ export async function fetchNavTree(url: string, forceRefresh = false): Promise<N
 
 // ── Deep Links ──────────────────────────────────────────────
 
-export async function getAllDeepLinks(status?: DeepLinkStatus): Promise<PaginatedResponse<DeepLink>> {
-  const qs = buildQueryString({ status });
+export async function getAllDeepLinks(status?: DeepLinkStatus, page = 1, size = 50): Promise<PaginatedResponse<DeepLink>> {
+  const qs = buildQueryString({ status, page, size });
   const res = await fetch(`${BASE}/deep-links${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -229,8 +245,8 @@ export async function getAllDeepLinks(status?: DeepLinkStatus): Promise<Paginate
   return res.json();
 }
 
-export async function getDeepLinks(sourceId: string, status = "pending"): Promise<DeepLink[]> {
-  const qs = buildQueryString({ status });
+export async function getDeepLinks(sourceId: string, status = "pending", foundInPage?: string): Promise<DeepLink[]> {
+  const qs = buildQueryString({ status, found_in_page: foundInPage });
   const res = await fetch(`${BASE}/deep-links/${sourceId}${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -350,6 +366,34 @@ export function kbSearch(
   );
 }
 
+// ── Agent Chat ──────────────────────────────────────────────
+
+export function streamAgentChat(
+  message: string,
+  conversation: { role: string; content: string }[],
+  onToken: (text: string) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): AbortController {
+  return streamSSE(
+    "/agent/chat",
+    { message, conversation },
+    (event, data) => {
+      if (event === "token") {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.text) onToken(parsed.text);
+        } catch {
+          // ignore non-JSON
+        }
+      }
+      // "done" event is handled by streamSSE's onDone
+    },
+    onDone,
+    onError,
+  );
+}
+
 export function kbChat(
   query: string,
   contextLimit = 5,
@@ -361,6 +405,33 @@ export function kbChat(
     "/kb/chat",
     { query, context_limit: contextLimit },
     (_event, data) => onToken(data),
+    onDone,
+    onError,
+  );
+}
+
+// ── Context Agent ──────────────────────────────────────────
+
+export function streamContextChat(
+  fileId: string | null,
+  conversation: { role: string; content: string }[],
+  onToken: (text: string) => void,
+  onDone?: () => void,
+  onError?: (err: Error) => void,
+): AbortController {
+  const body: Record<string, unknown> = { conversation };
+  if (fileId) body.file_id = fileId;
+  return streamSSE(
+    "/context/chat",
+    body,
+    (_event, data) => {
+      try {
+        const parsed = JSON.parse(data);
+        if (parsed.text) onToken(parsed.text);
+      } catch {
+        // ignore non-JSON lines
+      }
+    },
     onDone,
     onError,
   );

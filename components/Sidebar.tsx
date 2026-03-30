@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { House, File, Menu, Upload, Globe, Compass, Search } from "lucide-react";
@@ -19,17 +19,35 @@ const NAV_ITEMS = [
 ] as const;
 
 const STORAGE_KEY = "sidebar-collapsed";
+const WIDTH_KEY = "sidebar-width";
+const MIN_WIDTH = 180;
+const MAX_WIDTH = 400;
+const DEFAULT_WIDTH = 240;
+const COLLAPSED_WIDTH = 64;
 
 export default function Sidebar({ onNewIngestion }: SidebarProps) {
   const pathname = usePathname();
   const { data: stats } = useStats();
   const [collapsed, setCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+
+  /* ── Drag-to-resize state ─────────────────────────────────── */
+  const dragging = useRef(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const widthRef = useRef(sidebarWidth);
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "true") {
       setCollapsed(true);
+    }
+    const storedWidth = localStorage.getItem(WIDTH_KEY);
+    if (storedWidth) {
+      const parsed = parseInt(storedWidth, 10);
+      if (!isNaN(parsed) && parsed >= MIN_WIDTH && parsed <= MAX_WIDTH) {
+        setSidebarWidth(parsed);
+      }
     }
     setMounted(true);
   }, []);
@@ -42,15 +60,48 @@ export default function Sidebar({ onNewIngestion }: SidebarProps) {
     });
   };
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (collapsed) return;
+    e.preventDefault();
+    dragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [collapsed]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragging.current) return;
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
+      widthRef.current = newWidth;
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      localStorage.setItem(WIDTH_KEY, String(widthRef.current));
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
   const isActive = (path: string) => {
     return pathname.startsWith(path);
   };
 
   const expanded = !collapsed;
-  const width = expanded ? 240 : 64;
+  const width = expanded ? sidebarWidth : COLLAPSED_WIDTH;
 
   return (
     <nav
+      ref={sidebarRef}
       className="sidebar-desktop"
       style={{
         width,
@@ -59,9 +110,10 @@ export default function Sidebar({ onNewIngestion }: SidebarProps) {
         borderRight: "1px solid #ede9fe",
         display: "flex",
         flexDirection: "column",
-        transition: "width 0.25s ease",
+        transition: dragging.current ? "none" : "width 0.25s ease",
         flexShrink: 0,
         overflow: "hidden",
+        position: "relative",
       }}
     >
       {/* Header */}
@@ -195,6 +247,34 @@ export default function Sidebar({ onNewIngestion }: SidebarProps) {
             New Ingestion
           </button>
         </div>
+      )}
+      {/* Drag handle */}
+      {expanded && (
+        <div
+          onMouseDown={handleMouseDown}
+          style={{
+            position: "absolute",
+            top: 0,
+            right: 0,
+            width: 6,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 10,
+            background: "transparent",
+            transition: "background 0.15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "#ede9fe";
+          }}
+          onMouseLeave={(e) => {
+            if (!dragging.current) {
+              e.currentTarget.style.background = "transparent";
+            }
+          }}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+        />
       )}
     </nav>
   );

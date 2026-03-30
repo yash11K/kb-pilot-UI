@@ -2,8 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { ArrowLeft, X, Check } from "lucide-react";
-import { useSWRConfig } from "swr";
 import SpeedCard from "@/components/SpeedCard";
+import CardStackLoader from "@/components/CardStackLoader";
 import { useQueueFiles } from "@/hooks/useQueueFiles";
 import { useFileDetail } from "@/hooks/useFileDetail";
 import { acceptFile, rejectFile } from "@/lib/api";
@@ -17,23 +17,30 @@ interface SpeedReviewProps {
 }
 
 export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
-  const [idx, setIdx] = useState(0);
   const [done, setDone] = useState(0);
-  const { mutate } = useSWRConfig();
+  const [initialTotal, setInitialTotal] = useState<number | null>(null);
   const { showToast } = useToast();
 
   const { data, isLoading, error, mutate: queueMutate } = useQueueFiles({ page: 1, size: 100 });
   const files = data?.items || [];
-  const cur = files[idx];
-  const total = files.length;
+  const cur = files[0];
+  const total = initialTotal ?? files.length;
 
-  const { data: fileDetail } = useFileDetail(cur?.id || null, "queue");
+  // Capture the initial total once data loads
+  if (files.length > 0 && initialTotal === null) {
+    setInitialTotal(files.length);
+  }
+
+  const { data: fileDetail, isValidating: detailLoading } = useFileDetail(cur?.id || null, "queue");
+
+  const matchedDetail = fileDetail?.id === cur?.id ? fileDetail : undefined;
+  const contentLoading = detailLoading || (cur != null && matchedDetail == null);
 
   const reviewer =
     process.env.NEXT_PUBLIC_REVIEWER_EMAIL || "reviewer@example.com";
 
   const accept = useCallback(
-    async (id: string) => {
+    (id: string) => {
       const optimisticData = data
         ? {
             ...data,
@@ -42,33 +49,26 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
           }
         : undefined;
 
-      try {
-        setDone((d) => d + 1);
-        setTimeout(() => setIdx((i) => i + 1), 50);
-        await queueMutate(
-          async () => {
-            await acceptFile(id, reviewer);
-            return undefined as unknown as typeof data;
-          },
-          {
-            optimisticData,
-            rollbackOnError: true,
-            revalidate: true,
-          }
-        );
-        await mutate(
-          (key: unknown) => typeof key === "string" && key === "stats"
-        );
-        showToast("File accepted → S3 upload queued", "success");
-      } catch {
-        showToast("Failed to accept file. Please try again.", "error");
-      }
+      setDone((d) => d + 1);
+      showToast("File accepted → S3 upload queued", "success");
+
+      queueMutate(
+        async () => {
+          await acceptFile(id, reviewer);
+          return optimisticData as typeof data;
+        },
+        {
+          optimisticData,
+          rollbackOnError: true,
+          revalidate: false,
+        }
+      ).catch(() => showToast("Failed to sync accept. Will retry.", "error"));
     },
-    [data, reviewer, queueMutate, mutate, showToast]
+    [data, reviewer, queueMutate, showToast]
   );
 
   const reject = useCallback(
-    async (id: string) => {
+    (id: string) => {
       const optimisticData = data
         ? {
             ...data,
@@ -77,55 +77,27 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
           }
         : undefined;
 
-      try {
-        setDone((d) => d + 1);
-        setTimeout(() => setIdx((i) => i + 1), 50);
-        await queueMutate(
-          async () => {
-            await rejectFile(id, reviewer, "Rejected via speed review");
-            return undefined as unknown as typeof data;
-          },
-          {
-            optimisticData,
-            rollbackOnError: true,
-            revalidate: true,
-          }
-        );
-        await mutate(
-          (key: unknown) => typeof key === "string" && key === "stats"
-        );
-        showToast("File rejected", "error");
-      } catch {
-        showToast("Failed to reject file. Please try again.", "error");
-      }
+      setDone((d) => d + 1);
+      showToast("File rejected", "error");
+
+      queueMutate(
+        async () => {
+          await rejectFile(id, reviewer, "Rejected via speed review");
+          return optimisticData as typeof data;
+        },
+        {
+          optimisticData,
+          rollbackOnError: true,
+          revalidate: false,
+        }
+      ).catch(() => showToast("Failed to sync rejection. Will retry.", "error"));
     },
-    [data, reviewer, queueMutate, mutate, showToast]
+    [data, reviewer, queueMutate, showToast]
   );
 
   // Loading state
   if (isLoading) {
-    return (
-      <div
-        style={{
-          flex: 1,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            border: "3px solid #e5e7eb",
-            borderTopColor: "#7c3aed",
-            borderRadius: "50%",
-            animation: "spin 0.8s linear infinite",
-          }}
-        />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+    return <CardStackLoader />;
   }
 
   // Error state
@@ -185,7 +157,7 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
       <div
         style={{
           width: "100%",
-          maxWidth: 520,
+          maxWidth: 900,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
@@ -218,7 +190,7 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
           </span>
           <span>
             <span style={{ fontWeight: 700, color: "#d97706" }}>
-              {files.length - idx}
+              {files.length}
             </span>{" "}
             remaining
           </span>
@@ -229,7 +201,7 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
       <div
         style={{
           width: "100%",
-          maxWidth: 520,
+          maxWidth: 900,
           height: 4,
           background: "#f3f4f6",
           borderRadius: 2,
@@ -262,15 +234,14 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
         {cur ? (
           <div style={{ position: "relative" }}>
             {/* Shadow preview of next card */}
-            {files[idx + 1] && (
+            {files[1] && (
               <div
                 style={{
                   position: "absolute",
                   top: 10,
                   left: "50%",
                   transform: "translateX(-50%) scale(0.94)",
-                  width: 440,
-                  maxWidth: "92vw",
+                  width: "min(860px, 92vw)",
                   height: 80,
                   background: "#fff",
                   borderRadius: 24,
@@ -281,7 +252,8 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
             )}
             <SpeedCard
               file={cur}
-              fileDetail={fileDetail}
+              fileDetail={matchedDetail}
+              contentLoading={contentLoading}
               onAccept={accept}
               onReject={reject}
               onDetail={onDetail ? () => onDetail(cur) : () => {}}
@@ -343,8 +315,8 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
           <button
             onClick={() => reject(cur.id)}
             style={{
-              width: 52,
-              height: 52,
+              width: 62,
+              height: 62,
               borderRadius: "50%",
               border: "2.5px solid #fca5a5",
               background: "#fff",
@@ -372,8 +344,8 @@ export default function SpeedReview({ onExit, onDetail }: SpeedReviewProps) {
           <button
             onClick={() => accept(cur.id)}
             style={{
-              width: 52,
-              height: 52,
+              width: 62,
+              height: 62,
               borderRadius: "50%",
               border: "2.5px solid #86efac",
               background: "#fff",

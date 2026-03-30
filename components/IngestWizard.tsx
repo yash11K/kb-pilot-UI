@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { X, Globe, ArrowRight, Loader2, Zap, FileText, MapPin, Tag } from "lucide-react";
-import { fetchNavTree, startIngestion } from "@/lib/api";
-import type { NavTree, NavTreeNode, NavTreeSection } from "@/lib/types";
+import { useState, useCallback, useRef } from "react";
+import { X, Globe, ArrowRight, Loader2, Zap, FileText, MapPin, Tag, Upload, Trash2, Link2, CheckCircle2, AlertCircle } from "lucide-react";
+import { fetchNavTree, startIngestion, lookupProcessedUrls } from "@/lib/api";
+import type { NavTree, NavTreeNode, SourceUrlStats } from "@/lib/types";
 import NavTreeBrowser from "@/components/NavTreeBrowser";
 import { useRouter } from "next/navigation";
 
@@ -40,54 +40,6 @@ function buildNavMetadata(
   return meta;
 }
 
-/** Collect every model_json_url already present anywhere in the tree. */
-function collectAllTreeUrls(tree: NavTree): Set<string> {
-  const seen = new Set<string>();
-  function walk(node: NavTreeNode) {
-    if (node.model_json_url) seen.add(node.model_json_url);
-    for (const child of node.children) walk(child);
-  }
-  for (const section of tree.sections) {
-    for (const node of section.nodes) walk(node);
-  }
-  return seen;
-}
-
-/** Deep-clone a NavTree, injecting discovered children into the node matching targetUrl.
- *  Filters out any URLs already present anywhere in the tree to prevent circular references. */
-function injectChildrenIntoTree(
-  tree: NavTree,
-  targetUrl: string,
-  discoveredSections: NavTreeSection[],
-): NavTree {
-  // Flatten all discovered nodes from all sections into children
-  const discoveredNodes: NavTreeNode[] = discoveredSections.flatMap((s) => s.nodes);
-
-  // Collect all URLs already in the entire tree — prevents circular back-links
-  const allExistingUrls = collectAllTreeUrls(tree);
-
-  function mergeNode(node: NavTreeNode): NavTreeNode {
-    if (node.model_json_url === targetUrl) {
-      const newChildren = discoveredNodes
-        .flatMap((dn) => (dn.children.length > 0 ? dn.children : [dn]))
-        .filter((c) => c.model_json_url && !allExistingUrls.has(c.model_json_url));
-      return { ...node, children: [...node.children, ...newChildren] };
-    }
-    if (node.children.length > 0) {
-      return { ...node, children: node.children.map(mergeNode) };
-    }
-    return node;
-  }
-
-  return {
-    ...tree,
-    sections: tree.sections.map((s) => ({
-      ...s,
-      nodes: s.nodes.map(mergeNode),
-    })),
-  };
-}
-
 type Step = "url" | "browse" | "confirm";
 
 export default function IngestWizard({ onClose, onComplete }: IngestWizardProps) {
@@ -96,41 +48,175 @@ export default function IngestWizard({ onClose, onComplete }: IngestWizardProps)
   const [rootUrl, setRootUrl] = useState("");
   const [navTree, setNavTree] = useState<NavTree | null>(null);
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
+  const [processedUrls, setProcessedUrls] = useState<Record<string, SourceUrlStats>>({});
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLoadNav = useCallback(async () => {
-    if (!rootUrl.trim()) return;
+  /* ── Custom model.json link (2-step reveal) ──────────────── */
+  const [showCustomLink, setShowCustomLink] = useState(false);
+  const [customModelUrl, setCustomModelUrl] = useState("");
+  const [customUrlError, setCustomUrlError] = useState<string | null>(null);
+  const [customUrlValid, setCustomUrlValid] = useState(false);
+
+  const validateModelJsonUrl = useCallback((url: string) => {
+    if (!url.trim()) {
+      setCustomUrlError(null);
+      setCustomUrlValid(false);
+      return;
+    }
+    try {
+      const parsed = new URL(url.trim());
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        setCustomUrlError("URL must start with http:// or https://");
+        setCustomUrlValid(false);
+        return;
+      }
+      if (!url.trim().endsWith(".model.json")) {
+        setCustomUrlError("URL must end with .model.json");
+        setCustomUrlValid(false);
+        return;
+      }
+      setCustomUrlError(null);
+      setCustomUrlValid(true);
+    } catch {
+      setCustomUrlError("Please enter a valid URL");
+      setCustomUrlValid(false);
+    }
+  }, []);
+
+  const handleCustomModelUrlChange = useCallback(
+    (value: string) => {
+      setCustomModelUrl(value);
+      validateModelJsonUrl(value);
+    },
+    [validateModelJsonUrl],
+  );
+
+  /* ── Document upload (local-only, no backend wiring yet) ──── */
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+
+  const ACCEPTED_TYPES = [
+    "application/pdf",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ];
+  const ACCEPTED_EXTENSIONS = [".pdf", ".txt", ".md", ".csv", ".doc", ".docx"];
+
+  const isAcceptedFile = (file: File) => {
+    if (ACCEPTED_TYPES.includes(file.type)) return true;
+    return ACCEPTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+  };
+
+  const addFiles = useCallback((incoming: FileList | File[]) => {
+    const valid = Array.from(incoming).filter(isAcceptedFile);
+    if (valid.length === 0) return;
+    setUploadedFiles((prev) => {
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...valid.filter((f) => !names.has(f.name))];
+    });
+  }, []);
+
+  const removeFile = useCallback((name: string) => {
+    setUploadedFiles((prev) => prev.filter((f) => f.name !== name));
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOver(false);
+      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+    },
+    [addFiles],
+  );
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleLoadNavFromUrl = useCallback(async (url: string) => {
+    if (!url.trim()) return;
     setLoading(true);
     setError(null);
     try {
       // Ensure URL ends with .model.json
-      let url = rootUrl.trim();
-      if (!url.endsWith(".model.json")) {
-        url = url.replace(/\/$/, "") + ".model.json";
+      let finalUrl = url.trim();
+      if (!finalUrl.endsWith(".model.json")) {
+        finalUrl = finalUrl.replace(/\/$/, "") + ".model.json";
       }
-      setRootUrl(url);
-      const tree = await fetchNavTree(url);
+      setRootUrl(finalUrl);
+      const tree = await fetchNavTree(finalUrl);
       setNavTree(tree);
       setSelectedUrls(new Set());
+
+      // Collect all model_json_urls from the tree and look up which are already processed
+      const allUrls: string[] = [];
+      for (const section of tree.sections) {
+        for (const node of section.nodes) {
+          (function collect(n: NavTreeNode) {
+            if (n.model_json_url && !n.is_external) allUrls.push(n.model_json_url);
+            n.children.forEach(collect);
+          })(node);
+        }
+      }
+      if (allUrls.length > 0) {
+        try {
+          const lookup = await lookupProcessedUrls(allUrls);
+          setProcessedUrls(lookup.sources);
+        } catch {
+          // Non-critical — silently ignore lookup failures
+          setProcessedUrls({});
+        }
+      }
+
       setStep("browse");
-    } catch (err: any) {
-      setError(err.message || "Failed to load navigation tree");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load navigation tree");
     } finally {
       setLoading(false);
     }
-  }, [rootUrl]);
+  }, []);
 
-  const handleExplore = useCallback(
-    async (modelJsonUrl: string) => {
-      const subTree = await fetchNavTree(modelJsonUrl);
-      if (subTree.sections.length > 0 && navTree) {
-        setNavTree(injectChildrenIntoTree(navTree, modelJsonUrl, subTree.sections));
+  const handleLoadNav = useCallback(async () => {
+    handleLoadNavFromUrl(rootUrl);
+  }, [rootUrl, handleLoadNavFromUrl]);
+
+  const handleUseCustomLink = useCallback(() => {
+    if (!customUrlValid) return;
+    setRootUrl(customModelUrl.trim());
+    setShowCustomLink(false);
+    handleLoadNavFromUrl(customModelUrl.trim());
+  }, [customUrlValid, customModelUrl, handleLoadNavFromUrl]);
+
+  /** Directly ingest the custom model.json URL as a single source — skips nav tree entirely. */
+  const handleDirectIngest = useCallback(async () => {
+    if (!customUrlValid) return;
+    const url = customModelUrl.trim();
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await startIngestion({ urls: [url] });
+      onComplete?.();
+      onClose();
+      const firstSourceId = result?.jobs?.[0]?.source_id;
+      if (firstSourceId) {
+        router.push(`/sources/${firstSourceId}?tab=jobs`);
+      } else {
+        router.push("/sources");
       }
-    },
-    [navTree],
-  );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Direct ingestion failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [customUrlValid, customModelUrl, onClose, onComplete, router]);
 
   const handleIngest = useCallback(async () => {
     if (!navTree || selectedUrls.size === 0) return;
@@ -159,8 +245,8 @@ export default function IngestWizard({ onClose, onComplete }: IngestWizardProps)
       } else {
         router.push("/sources");
       }
-    } catch (err: any) {
-      setError(err.message || "Ingestion failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Ingestion failed");
     } finally {
       setSubmitting(false);
     }
@@ -370,6 +456,355 @@ export default function IngestWizard({ onClose, onComplete }: IngestWizardProps)
                   <span>avis.com/en/home.model.json</span>
                 </button>
               </div>
+
+              {/* ── Custom model.json Link (2-step reveal) ──── */}
+              <div style={{ marginTop: 16 }}>
+                {!showCustomLink ? (
+                  <button
+                    onClick={() => setShowCustomLink(true)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px dashed var(--border, #e5e7eb)",
+                      background: "var(--background, #fff)",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      fontWeight: 500,
+                      color: "#7c3aed",
+                      textAlign: "left",
+                      transition: "border-color 0.15s, background 0.15s",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "#7c3aed";
+                      e.currentTarget.style.background = "#faf5ff";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--border, #e5e7eb)";
+                      e.currentTarget.style.background = "var(--background, #fff)";
+                    }}
+                  >
+                    <Link2 size={14} style={{ flexShrink: 0 }} />
+                    <span>Paste your own model.json link</span>
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      border: "1px solid #ede9fe",
+                      background: "#faf5ff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Link2 size={14} style={{ color: "#7c3aed" }} />
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
+                          Custom model.json URL
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setShowCustomLink(false);
+                          setCustomModelUrl("");
+                          setCustomUrlError(null);
+                          setCustomUrlValid(false);
+                        }}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 2,
+                          color: "#9ca3af",
+                          display: "flex",
+                        }}
+                        aria-label="Close custom link input"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          border: `1px solid ${customUrlError ? "#fca5a5" : customUrlValid ? "#86efac" : "#e5e7eb"}`,
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          background: "#fff",
+                          transition: "border-color 0.15s",
+                        }}
+                      >
+                        <Globe size={14} style={{ color: "#9ca3af", flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          value={customModelUrl}
+                          onChange={(e) => handleCustomModelUrlChange(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleDirectIngest()}
+                          placeholder="https://example.com/page.model.json"
+                          autoFocus
+                          style={{
+                            flex: 1,
+                            border: "none",
+                            outline: "none",
+                            fontSize: 13,
+                            fontFamily: "var(--font-mono)",
+                            background: "transparent",
+                          }}
+                        />
+                        {customUrlValid && (
+                          <CheckCircle2 size={14} style={{ color: "#22c55e", flexShrink: 0 }} />
+                        )}
+                        {customUrlError && (
+                          <AlertCircle size={14} style={{ color: "#ef4444", flexShrink: 0 }} />
+                        )}
+                      </div>
+                    </div>
+
+                    {customUrlError && (
+                      <div style={{ fontSize: 11, color: "#ef4444", marginTop: 6 }}>
+                        {customUrlError}
+                      </div>
+                    )}
+                    {!customUrlError && (
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+                        Paste a direct .model.json URL to ingest it as a source or browse its navigation
+                      </div>
+                    )}
+
+                    {/* Two explicit CTAs */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                      <button
+                        onClick={handleDirectIngest}
+                        disabled={!customUrlValid || submitting || loading}
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          padding: "9px 14px",
+                          borderRadius: 8,
+                          border: "none",
+                          background: customUrlValid ? "#7c3aed" : "#d1d5db",
+                          color: "#fff",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: !customUrlValid || submitting || loading ? "not-allowed" : "pointer",
+                          transition: "background 0.15s, opacity 0.15s",
+                          opacity: !customUrlValid || submitting || loading ? 0.6 : 1,
+                        }}
+                      >
+                        {submitting ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Zap size={14} />
+                        )}
+                        {submitting ? "Ingesting..." : "Ingest Directly"}
+                      </button>
+                      <button
+                        onClick={handleUseCustomLink}
+                        disabled={!customUrlValid || loading || submitting}
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          padding: "9px 14px",
+                          borderRadius: 8,
+                          border: "1px solid var(--border, #e5e7eb)",
+                          background: "var(--background, #fff)",
+                          color: customUrlValid ? "#111827" : "#9ca3af",
+                          fontWeight: 600,
+                          fontSize: 13,
+                          cursor: !customUrlValid || loading || submitting ? "not-allowed" : "pointer",
+                          transition: "border-color 0.15s, opacity 0.15s",
+                          opacity: !customUrlValid || loading || submitting ? 0.6 : 1,
+                        }}
+                      >
+                        {loading ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <ArrowRight size={14} />
+                        )}
+                        {loading ? "Loading..." : "Load Navigation"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Document Upload Section ──────────────── */}
+              <div
+                style={{
+                  marginTop: 24,
+                  paddingTop: 20,
+                  borderTop: "1px solid var(--border, #e5e7eb)",
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "var(--foreground, #111)",
+                    marginBottom: 4,
+                  }}
+                >
+                  Or upload documents
+                </p>
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: "var(--foreground-muted, #9ca3af)",
+                    marginBottom: 12,
+                  }}
+                >
+                  Supported formats: PDF, TXT, Markdown, CSV, DOC, DOCX
+                </p>
+
+                {/* Drop zone */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${dragOver ? "#7c3aed" : "#e5e7eb"}`,
+                    borderRadius: 12,
+                    padding: "24px 16px",
+                    textAlign: "center",
+                    cursor: "pointer",
+                    background: dragOver ? "#faf5ff" : "var(--background, #fff)",
+                    transition: "border-color 0.15s, background 0.15s",
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Upload documents"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                >
+                  <Upload
+                    size={24}
+                    style={{
+                      color: dragOver ? "#7c3aed" : "#9ca3af",
+                      marginBottom: 8,
+                    }}
+                  />
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: dragOver ? "#7c3aed" : "#6b7280",
+                    }}
+                  >
+                    Drop files here or click to browse
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept={ACCEPTED_EXTENSIONS.join(",")}
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      if (e.target.files) addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+
+                {/* File list */}
+                {uploadedFiles.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 6,
+                    }}
+                  >
+                    {uploadedFiles.map((file) => (
+                      <div
+                        key={file.name}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "8px 12px",
+                          background: "#f9fafb",
+                          borderRadius: 8,
+                          border: "1px solid #e5e7eb",
+                        }}
+                      >
+                        <FileText
+                          size={15}
+                          style={{ color: "#7c3aed", flexShrink: 0 }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: "#111827",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {file.name}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#9ca3af",
+                            }}
+                          >
+                            {formatSize(file.size)}
+                          </div>
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFile(file.name);
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 4,
+                            color: "#9ca3af",
+                            borderRadius: 4,
+                            display: "flex",
+                          }}
+                          aria-label={`Remove ${file.name}`}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -379,7 +814,7 @@ export default function IngestWizard({ onClose, onComplete }: IngestWizardProps)
               navTree={navTree}
               selectedUrls={selectedUrls}
               onSelectionChange={setSelectedUrls}
-              onExplore={handleExplore}
+              processedUrls={processedUrls}
             />
           )}
 

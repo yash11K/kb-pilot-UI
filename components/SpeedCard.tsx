@@ -11,6 +11,7 @@ import { STATUS_CONFIG, KBFileListItem, KBFile } from "@/lib/types";
 interface SpeedCardProps {
   file: KBFileListItem;
   fileDetail: KBFile | undefined;
+  contentLoading?: boolean;
   onAccept: (fileId: string) => void;
   onReject: (fileId: string) => void;
   onDetail: (file: KBFileListItem) => void;
@@ -26,7 +27,7 @@ function fmtDate(d: string | null) {
     : "—";
 }
 
-export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDetail }: SpeedCardProps) {
+export default function SpeedCard({ file, fileDetail, contentLoading, onAccept, onReject, onDetail }: SpeedCardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const sx = useRef(0);
   const sy = useRef(0);
@@ -76,8 +77,7 @@ export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDeta
       onPointerMove={move}
       onPointerUp={up}
       style={{
-        width: 440,
-        maxWidth: "92vw",
+        width: "min(860px, 92vw)",
         background: "#fff",
         borderRadius: 24,
         boxShadow: "0 20px 60px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04)",
@@ -140,13 +140,13 @@ export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDeta
       </div>
 
       {/* Header */}
-      <div style={{ padding: "24px 24px 16px", borderBottom: "1px solid #f3f4f6" }}>
+      <div style={{ padding: "32px 32px 20px", borderBottom: "1px solid #f3f4f6" }}>
         <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <Badge label={sc.label} color={sc.color} bg={sc.bg} />
           <ScorePill score={file.validation_score} />
           <Badge label={file.content_type} color="#7c3aed" bg="#f3f0ff" />
         </div>
-        <h3 style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: 0, lineHeight: 1.3 }}>
+        <h3 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: 0, lineHeight: 1.3 }}>
           {file.title || file.filename}
         </h3>
         <div
@@ -162,8 +162,25 @@ export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDeta
       </div>
 
       {/* Content preview */}
-      <div style={{ padding: "16px 24px", maxHeight: 240, overflow: "auto" }}>
-        {fileDetail?.md_content ? (
+      <div style={{ padding: "24px 32px", maxHeight: 480, overflow: "auto" }}>
+        {contentLoading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[100, 85, 92, 70, 88].map((w, i) => (
+              <div
+                key={i}
+                style={{
+                  height: 14,
+                  width: `${w}%`,
+                  background: "linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%)",
+                  backgroundSize: "200% 100%",
+                  borderRadius: 6,
+                  animation: "shimmer 1.5s infinite",
+                }}
+              />
+            ))}
+            <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+          </div>
+        ) : fileDetail?.md_content ? (
           <MdPreview content={fileDetail.md_content} />
         ) : (
           <p style={{ color: "#9ca3af", fontSize: 13, margin: 0 }}>{file.title}</p>
@@ -171,15 +188,15 @@ export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDeta
       </div>
 
       {/* Score breakdown */}
-      {fileDetail?.validation_breakdown && (
-        <div style={{ padding: "12px 24px 16px", borderTop: "1px solid #f3f4f6" }}>
+      {!contentLoading && fileDetail?.validation_breakdown && (
+        <div style={{ padding: "16px 32px 20px", borderTop: "1px solid #f3f4f6" }}>
           <ScoreBreakdown breakdown={fileDetail.validation_breakdown} />
         </div>
       )}
 
       {/* Validation issues */}
-      {issues.length > 0 && (
-        <div style={{ padding: "0 24px 14px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {!contentLoading && issues.length > 0 && (
+        <div style={{ padding: "0 32px 18px", display: "flex", gap: 6, flexWrap: "wrap" }}>
           {issues.map((iss, i) => (
             <span
               key={i}
@@ -199,7 +216,7 @@ export default function SpeedCard({ file, fileDetail, onAccept, onReject, onDeta
       )}
 
       {/* View Full Detail button */}
-      <div style={{ padding: "0 24px 20px" }}>
+      <div style={{ padding: "0 32px 24px" }}>
         <button
           onClick={(e) => {
             e.stopPropagation();

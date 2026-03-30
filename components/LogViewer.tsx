@@ -105,7 +105,7 @@ export default function LogViewer({
   const toggleType = (t: SSEEventType) => {
     setActiveTypes((prev) => {
       const next = new Set(prev);
-      next.has(t) ? next.delete(t) : next.add(t);
+      if (next.has(t)) next.delete(t); else next.add(t);
       return next;
     });
   };
@@ -113,7 +113,7 @@ export default function LogViewer({
   const toggleAgent = (a: string) => {
     setActiveAgents((prev) => {
       const next = new Set(prev);
-      next.has(a) ? next.delete(a) : next.add(a);
+      if (next.has(a)) next.delete(a); else next.add(a);
       return next;
     });
   };

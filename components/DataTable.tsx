@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye } from "lucide-react";
 import Badge from "@/components/Badge";
 import ScorePill from "@/components/ScorePill";
 import { STATUS_CONFIG } from "@/lib/types";
@@ -10,6 +11,7 @@ import SwipeRow from "@/components/SwipeRow";
 interface DataTableProps {
   files: KBFileListItem[];
   onRowClick: (file: KBFileListItem) => void;
+  onQuickView?: (file: KBFileListItem) => void;
   onAccept?: (fileId: string) => void;
   onReject?: (fileId: string) => void;
   swipeable?: boolean;
@@ -24,7 +26,7 @@ interface DataTableProps {
   hideStatus?: boolean;
 }
 
-const ALL_COLUMNS = ["Title", "Type", "Brand", "Region", "Score", "Status", "Created"];
+const ALL_COLUMNS = ["Title", "Type", "Brand", "Region", "Score", "Status", "Created", ""];
 
 function SkeletonBlock({ width }: { width: number | string }) {
   return (
@@ -43,6 +45,7 @@ function SkeletonBlock({ width }: { width: number | string }) {
 export default function DataTable({
   files,
   onRowClick,
+  onQuickView,
   onAccept,
   onReject,
   swipeable,
@@ -124,6 +127,7 @@ export default function DataTable({
         <td style={{ padding: "13px 16px" }}>
           <SkeletonBlock width={90} />
         </td>
+        <td style={{ padding: "13px 16px", width: 40 }} />
       </tr>
     ));
 
@@ -220,6 +224,29 @@ export default function DataTable({
           }}
         >
           {formatDate(file.created_at)}
+        </td>
+        <td style={{ padding: "13px 8px", width: 40 }}>
+          {onQuickView && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onQuickView(file); }}
+              title="Quick view"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 4,
+                borderRadius: 6,
+                color: "#9ca3af",
+                display: "flex",
+                alignItems: "center",
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#7c3aed")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#9ca3af")}
+            >
+              <Eye size={15} />
+            </button>
+          )}
         </td>
       </tr>
     );

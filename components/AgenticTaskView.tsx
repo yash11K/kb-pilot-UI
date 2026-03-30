@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Sparkles,
   SkipForward,
-  AlertTriangle,
 } from "lucide-react";
 import {
   AGENT_COLORS,
@@ -88,7 +87,9 @@ export default function AgenticTaskView({
   jobId,
   sourceUrl,
   status,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   currentStage,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   progress,
   urlTasks,
   logs,

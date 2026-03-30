@@ -25,7 +25,9 @@ export interface KBFile {
   content_hash: string;
   source_url: string;
   component_type: string;
+  source_id: string | null;
   aem_node_id: string;
+  doc_type: string | null;
   md_content: string;
   modify_date: string | null;
   parent_context: string | null;
@@ -54,6 +56,7 @@ export interface KBFileListItem {
   component_type: string;
   region: string;
   brand: string;
+  source_id: string;
   status: FileStatus;
   validation_score: number;
   created_at: string;
@@ -209,6 +212,20 @@ export const DEEP_LINK_STATUS_CONFIG: Record<DeepLinkStatus, { label: string; co
   ingested:  { label: "Ingested",  color: "#16a34a", bg: "#f0fdf4" },
   dismissed: { label: "Dismissed", color: "#6b7280", bg: "#f3f4f6" },
 };
+
+export interface SourceUrlStats {
+  source_id: string;
+  url: string;
+  last_ingested_at: string | null;
+  total_files: number;
+  approved: number;
+  pending_review: number;
+  rejected: number;
+}
+
+export interface UrlLookupResponse {
+  sources: Record<string, SourceUrlStats>;
+}
 
 export interface ActionResponse {
   success: boolean;
@@ -439,6 +456,13 @@ export interface KBSearchResult {
 }
 
 export interface KBChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+// ── Context Agent Types ─────────────────────────────────────
+
+export interface ContextMessage {
   role: "user" | "assistant";
   content: string;
 }

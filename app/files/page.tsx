@@ -178,18 +178,27 @@ function FilesPageContent() {
   );
 
   const handleFilterChange = useCallback((key: string, value: string) => {
-    const setter = isPending ? setQueueFilters : setFileFilters;
-    setter((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
+    if (isPending) {
+      setQueueFilters((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
+    } else {
+      setFileFilters((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
+    }
   }, [isPending]);
 
   const handleSearch = useCallback((value: string) => {
-    const setter = isPending ? setQueueFilters : setFileFilters;
-    setter((prev) => ({ ...prev, search: value, page: 1 }));
+    if (isPending) {
+      setQueueFilters((prev) => ({ ...prev, search: value, page: 1 }));
+    } else {
+      setFileFilters((prev) => ({ ...prev, search: value, page: 1 }));
+    }
   }, [isPending]);
 
   const handlePageChange = useCallback((page: number) => {
-    const setter = isPending ? setQueueFilters : setFileFilters;
-    setter((prev) => ({ ...prev, page }));
+    if (isPending) {
+      setQueueFilters((prev) => ({ ...prev, page }));
+    } else {
+      setFileFilters((prev) => ({ ...prev, page }));
+    }
   }, [isPending]);
 
   const hasActiveFilters = !!(filters.search || filters.region || filters.brand || filters.content_type);
@@ -197,14 +206,23 @@ function FilesPageContent() {
 
   return (
     <>
-      {/* StatsStrip */}
-      <div style={{ padding: "24px 32px 0" }}>
-        <StatsStrip />
-      </div>
+      {/* StatsStrip — hidden during speed review */}
+      {!(speedMode && isPending) && (
+        <div style={{ padding: "24px 32px 0" }}>
+          <StatsStrip />
+        </div>
+      )}
 
       {speedMode && isPending ? (
         <SpeedReview
-          onExit={() => setSpeedMode(false)}
+          onExit={() => {
+            setSpeedMode(false);
+            globalMutate(
+              (key: unknown) =>
+                typeof key === "string" &&
+                (key.startsWith("queue:") || key === "stats"),
+            );
+          }}
           onDetail={(file) => setSelectedFileId(file.id)}
         />
       ) : (
@@ -392,7 +410,14 @@ function FilesPageContent() {
                 selectable={true}
                 selectedIds={selectedIds}
                 onSelectionChange={setSelectedIds}
-                onRowClick={(file) => setSelectedFileId(file.id)}
+                onRowClick={(file) => {
+                  if (file.source_id) {
+                    router.push(`/sources/${file.source_id}/files/${file.id}`);
+                  } else {
+                    setSelectedFileId(file.id);
+                  }
+                }}
+                onQuickView={(file) => setSelectedFileId(file.id)}
                 onAccept={isPending ? handleAccept : undefined}
                 onReject={isPending ? handleReject : undefined}
                 isLoading={isLoading}

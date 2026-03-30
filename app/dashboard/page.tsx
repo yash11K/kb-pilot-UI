@@ -5,7 +5,7 @@ import Link from "next/link";
 import StatsStrip from "@/components/StatsStrip";
 import { useStats } from "@/hooks/useStats";
 import { useRouter } from "next/navigation";
-import { Layers, Inbox, Upload, File, Zap, ArrowRight, Link2 } from "lucide-react";
+import { Layers, Inbox, Upload, File, Zap, ArrowRight, Link2, Compass } from "lucide-react";
 import { useActiveJobs } from "@/hooks/useActiveJobs";
 import { useSources } from "@/hooks/useSources";
 import { useDiscoveryLinks } from "@/hooks/useDiscoveryLinks";
@@ -17,12 +17,11 @@ export default function DashboardPage() {
   const [showIngestWizard, setShowIngestWizard] = useState(false);
   const { activeJobs, mutate: activeJobsMutate } = useActiveJobs();
   const { data: recentSources } = useSources({ page: 1, size: 5 });
-  const { data: pendingLinks } = useDiscoveryLinks("pending");
+  const { total: pendingLinkCount } = useDiscoveryLinks("pending");
 
   const pending = stats?.pending_review ?? 0;
   const total = stats?.total_files ?? 0;
   const activeJobEntries = Object.entries(activeJobs);
-  const pendingLinkCount = pendingLinks?.length ?? 0;
 
   return (
     <>
@@ -57,6 +56,22 @@ export default function DashboardPage() {
               {pending > 0 && (
                 <span style={{ background: "rgba(255,255,255,0.25)", borderRadius: 10, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>
                   {pending}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => router.push("/discovery?mode=speed")}
+              style={{
+                padding: "14px 20px", borderRadius: 12, cursor: "pointer", display: "flex",
+                alignItems: "center", gap: 10, fontSize: 13, fontWeight: 600,
+                background: "linear-gradient(135deg, #0891b2, #67e8f9)", color: "#fff",
+                border: "none", boxShadow: "0 2px 10px rgba(8,145,178,0.3)",
+              }}
+            >
+              <Compass size={16} /> Speed Discovery
+              {pendingLinkCount > 0 && (
+                <span style={{ background: "rgba(255,255,255,0.25)", borderRadius: 10, padding: "1px 8px", fontSize: 11, fontWeight: 700 }}>
+                  {pendingLinkCount}
                 </span>
               )}
             </button>
@@ -107,23 +122,25 @@ export default function DashboardPage() {
       {/* Callout cards row */}
       <div style={{ padding: "0 32px", display: "flex", gap: 16, marginBottom: 24 }}>
         {/* Active Ingestions */}
-        {activeJobEntries.length > 0 && (
-          <div
-            style={{
-              flex: 1,
-              background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
-              borderRadius: 14,
-              padding: "20px 24px",
-              color: "#fff",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <Zap size={16} />
-              <span style={{ fontSize: 14, fontWeight: 700 }}>
-                {activeJobEntries.length} Active Ingestion{activeJobEntries.length !== 1 ? "s" : ""}
-              </span>
-            </div>
-            {activeJobEntries.slice(0, 3).map(([sourceId]) => {
+        <div
+          style={{
+            flex: 1,
+            background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
+            borderRadius: 14,
+            padding: "20px 24px",
+            color: "#fff",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <Zap size={16} />
+            <span style={{ fontSize: 14, fontWeight: 700 }}>
+              {activeJobEntries.length > 0
+                ? `${activeJobEntries.length} Active Ingestion${activeJobEntries.length !== 1 ? "s" : ""}`
+                : "No Active Ingestions"}
+            </span>
+          </div>
+          {activeJobEntries.length > 0 ? (
+            activeJobEntries.slice(0, 3).map(([sourceId]) => {
               const src = recentSources?.items.find((s) => s.id === sourceId);
               return (
                 <Link
@@ -150,66 +167,70 @@ export default function DashboardPage() {
                   <ArrowRight size={12} style={{ marginLeft: "auto", flexShrink: 0 }} />
                 </Link>
               );
-            })}
-          </div>
-        )}
+            })
+          ) : (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>
+              All quiet at the moment.
+            </div>
+          )}
+        </div>
 
         {/* Pending Review callout */}
-        {pending > 0 && (
-          <Link
-            href="/files?tab=pending"
-            style={{
-              flex: 1,
-              background: "#fffbeb",
-              borderRadius: 14,
-              border: "1px solid #fde68a",
-              padding: "20px 24px",
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              transition: "border-color 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#d97706")}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#fde68a")}
-          >
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 800, color: "#d97706" }}>{pending}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>files pending review</div>
+        <Link
+          href="/files?tab=pending"
+          style={{
+            flex: 1,
+            background: "#fffbeb",
+            borderRadius: 14,
+            border: "1px solid #fde68a",
+            padding: "20px 24px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "border-color 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#d97706")}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#fde68a")}
+        >
+          <div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: "#d97706" }}>{pending}</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#92400e" }}>
+              {pending > 0 ? "files pending review" : "no files pending review"}
             </div>
-            <ArrowRight size={20} color="#d97706" />
-          </Link>
-        )}
+          </div>
+          <ArrowRight size={20} color="#d97706" />
+        </Link>
 
         {/* Discovery callout */}
-        {pendingLinkCount > 0 && (
-          <Link
-            href="/discovery"
-            style={{
-              flex: 1,
-              background: "#ecfeff",
-              borderRadius: 14,
-              border: "1px solid #a5f3fc",
-              padding: "20px 24px",
-              textDecoration: "none",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              transition: "border-color 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#0891b2")}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#a5f3fc")}
-          >
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Link2 size={16} color="#0891b2" />
-                <span style={{ fontSize: 28, fontWeight: 800, color: "#0891b2" }}>{pendingLinkCount}</span>
-              </div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#155e75" }}>links pending triage</div>
+        <Link
+          href="/discovery"
+          style={{
+            flex: 1,
+            background: "#ecfeff",
+            borderRadius: 14,
+            border: "1px solid #a5f3fc",
+            padding: "20px 24px",
+            textDecoration: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            transition: "border-color 0.15s",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#0891b2")}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#a5f3fc")}
+        >
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Link2 size={16} color="#0891b2" />
+              <span style={{ fontSize: 28, fontWeight: 800, color: "#0891b2" }}>{pendingLinkCount}</span>
             </div>
-            <ArrowRight size={20} color="#0891b2" />
-          </Link>
-        )}
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#155e75" }}>
+              {pendingLinkCount > 0 ? "links pending triage" : "no links pending triage"}
+            </div>
+          </div>
+          <ArrowRight size={20} color="#0891b2" />
+        </Link>
       </div>
 
       {/* Recent Activity */}

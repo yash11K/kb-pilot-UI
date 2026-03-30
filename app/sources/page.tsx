@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { Upload, RefreshCw } from "lucide-react";
 import { useSources } from "@/hooks/useSources";
 import { useActiveJobs } from "@/hooks/useActiveJobs";
-import SourceCard from "@/components/SourceCard";
+import SourcesTable from "@/components/SourcesTable";
 import IngestWizard from "@/components/IngestWizard";
 
 export default function SourcesPage() {
@@ -12,8 +12,6 @@ export default function SourcesPage() {
   const [regionFilter, setRegionFilter] = useState("");
   const [brandFilter, setBrandFilter] = useState("");
   const [showIngest, setShowIngest] = useState(false);
-  const [previewSourceId, setPreviewSourceId] = useState<string | null>(null);
-
   const { activeJobs, mutate: activeJobsMutate } = useActiveJobs();
   const { data, isLoading, error, mutate } = useSources({
     region: regionFilter || undefined,
@@ -110,28 +108,6 @@ export default function SourcesPage() {
         </button>
       </div>
 
-      {/* Loading */}
-      {isLoading && (
-        <>
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              style={{
-                background: "#fff",
-                borderRadius: 14,
-                border: "1px solid #ede9fe",
-                padding: "20px 24px",
-                marginBottom: 12,
-              }}
-            >
-              <div style={{ width: 300, height: 14, background: "#e5e7eb", borderRadius: 4, marginBottom: 10, animation: "pulse 1.5s ease-in-out infinite" }} />
-              <div style={{ width: 120, height: 22, background: "#e5e7eb", borderRadius: 12, animation: "pulse 1.5s ease-in-out infinite" }} />
-            </div>
-          ))}
-          <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }`}</style>
-        </>
-      )}
-
       {/* Error */}
       {error && !isLoading && (
         <div
@@ -162,63 +138,16 @@ export default function SourcesPage() {
         </div>
       )}
 
-      {/* Source cards */}
-      {!isLoading && !error && data?.items.map((s) => (
-        <SourceCard
-          key={s.id}
-          source={s}
-          activeJobId={activeJobs[s.id] || null}
-          isPreviewOpen={previewSourceId === s.id}
-          onTogglePreview={() =>
-            setPreviewSourceId((prev) => (prev === s.id ? null : s.id))
-          }
+      {/* Sources table */}
+      {!error && (
+        <SourcesTable
+          sources={data?.items ?? []}
+          activeJobs={activeJobs}
+          isLoading={isLoading}
+          page={data?.page ?? page}
+          totalPages={data?.pages ?? 1}
+          onPageChange={handlePageChange}
         />
-      ))}
-
-      {/* Empty */}
-      {!isLoading && !error && data && data.items.length === 0 && (
-        <div style={{ textAlign: "center", padding: "48px 24px", color: "#9ca3af", fontSize: 14 }}>
-          No sources found.
-        </div>
-      )}
-
-      {/* Pagination */}
-      {!isLoading && !error && data && data.pages > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
-          <button
-            disabled={page <= 1}
-            onClick={() => handlePageChange(page - 1)}
-            style={{
-              padding: "6px 14px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              background: "#fff",
-              fontSize: 13,
-              cursor: page <= 1 ? "default" : "pointer",
-              opacity: page <= 1 ? 0.4 : 1,
-            }}
-          >
-            Previous
-          </button>
-          <span style={{ padding: "6px 10px", fontSize: 13, color: "#6b7280" }}>
-            Page {data.page} of {data.pages}
-          </span>
-          <button
-            disabled={page >= data.pages}
-            onClick={() => handlePageChange(page + 1)}
-            style={{
-              padding: "6px 14px",
-              border: "1px solid #e5e7eb",
-              borderRadius: 8,
-              background: "#fff",
-              fontSize: 13,
-              cursor: page >= data.pages ? "default" : "pointer",
-              opacity: page >= data.pages ? 0.4 : 1,
-            }}
-          >
-            Next
-          </button>
-        </div>
       )}
 
       {showIngest && (

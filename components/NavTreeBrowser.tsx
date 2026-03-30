@@ -8,17 +8,14 @@ import {
   CheckSquare,
   Square,
   MinusSquare,
-  Search,
-  Loader2,
 } from "lucide-react";
-import type { NavTree, NavTreeNode, NavTreeSection } from "@/lib/types";
+import type { NavTree, NavTreeNode, NavTreeSection, SourceUrlStats } from "@/lib/types";
 
 interface NavTreeBrowserProps {
   navTree: NavTree;
   selectedUrls: Set<string>;
   onSelectionChange: (urls: Set<string>) => void;
-  /** Called when user clicks Explore on a node. Should fetch sub-navigation and return child nodes to merge. */
-  onExplore?: (modelJsonUrl: string) => Promise<void>;
+  processedUrls?: Record<string, SourceUrlStats>;
 }
 
 /** Collect all selectable (non-external, has model_json_url) leaf URLs from a node. */
@@ -39,29 +36,50 @@ function collectSectionUrls(section: NavTreeSection): string[] {
 
 // ── Node Component ──────────────────────────────────────────
 
+function ProcessedBadge({ stats }: { stats: SourceUrlStats }) {
+  return (
+    <span
+      title={`${stats.total_files} files: ${stats.approved} approved, ${stats.pending_review} pending, ${stats.rejected} rejected`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 600,
+        padding: "1px 7px",
+        borderRadius: 10,
+        background: "#ecfdf5",
+        color: "#059669",
+        border: "1px solid #a7f3d0",
+        whiteSpace: "nowrap",
+        flexShrink: 0,
+      }}
+    >
+      <span style={{ width: 5, height: 5, borderRadius: "50%", background: "#059669" }} />
+      {stats.total_files} file{stats.total_files !== 1 ? "s" : ""}
+      {stats.approved > 0 && (
+        <span style={{ color: "#16a34a" }}>{stats.approved} in KB</span>
+      )}
+    </span>
+  );
+}
+
 function TreeNode({
   node,
   depth,
   selectedUrls,
   onToggle,
-  onExplore,
-  exploredUrls,
-  exploringUrl,
+  processedUrls,
 }: {
   node: NavTreeNode;
   depth: number;
   selectedUrls: Set<string>;
   onToggle: (url: string) => void;
-  onExplore?: (modelJsonUrl: string) => Promise<void>;
-  exploredUrls: Set<string>;
-  exploringUrl: string | null;
+  processedUrls?: Record<string, SourceUrlStats>;
 }) {
   const [expanded, setExpanded] = useState(depth < 1);
   const hasChildren = node.children.length > 0;
   const isSelectable = !!node.model_json_url && !node.is_external;
-  const isExplored = node.model_json_url ? exploredUrls.has(node.model_json_url) : false;
-  const isExploring = node.model_json_url === exploringUrl;
-  const canExplore = isSelectable && !isExplored && !isExploring && !!onExplore;
 
   const childUrls = useMemo(() => collectSelectableUrls(node), [node]);
   const selectedCount = childUrls.filter((u) => selectedUrls.has(u)).length;
@@ -77,16 +95,6 @@ function TreeNode({
       }
     }
   }, [childUrls, selectedCount, selectedUrls, onToggle]);
-
-  const handleExplore = useCallback(
-    async (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (!node.model_json_url || !onExplore) return;
-      await onExplore(node.model_json_url);
-      setExpanded(true);
-    },
-    [node.model_json_url, onExplore],
-  );
 
   const checkState =
     selectedCount === 0
@@ -175,6 +183,11 @@ function TreeNode({
           {node.label}
         </span>
 
+        {/* Processed badge */}
+        {node.model_json_url && processedUrls?.[node.model_json_url] && (
+          <ProcessedBadge stats={processedUrls[node.model_json_url]} />
+        )}
+
         {/* URL path hint */}
         {node.url && !hasChildren && (
           <span
@@ -182,79 +195,13 @@ function TreeNode({
               fontSize: 11,
               fontFamily: "var(--font-mono)",
               color: "var(--foreground-muted, #9ca3af)",
-              maxWidth: 260,
+              maxWidth: 200,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
             }}
           >
             {node.url}
-          </span>
-        )}
-
-        {/* Explore button */}
-        {canExplore && (
-          <button
-            onClick={handleExplore}
-            title="Explore sub-pages"
-            style={{
-              background: "none",
-              border: "1px solid var(--border, #e5e7eb)",
-              borderRadius: 4,
-              padding: "1px 5px",
-              cursor: "pointer",
-              color: "#7c3aed",
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              fontSize: 10,
-              fontWeight: 500,
-              transition: "background 0.15s, border-color 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background = "#f5f3ff";
-              e.currentTarget.style.borderColor = "#c4b5fd";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.background = "none";
-              e.currentTarget.style.borderColor = "var(--border, #e5e7eb)";
-            }}
-          >
-            <Search size={10} />
-            Explore
-          </button>
-        )}
-
-        {/* Exploring spinner */}
-        {isExploring && (
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 3,
-              fontSize: 10,
-              color: "#7c3aed",
-              fontWeight: 500,
-            }}
-          >
-            <Loader2 size={10} className="animate-spin" />
-            Exploring...
-          </span>
-        )}
-
-        {/* Explored badge */}
-        {isExplored && hasChildren && (
-          <span
-            style={{
-              fontSize: 9,
-              color: "#16a34a",
-              fontWeight: 500,
-              padding: "1px 5px",
-              background: "#f0fdf4",
-              borderRadius: 4,
-            }}
-          >
-            explored
           </span>
         )}
 
@@ -293,9 +240,7 @@ function TreeNode({
             depth={depth + 1}
             selectedUrls={selectedUrls}
             onToggle={onToggle}
-            onExplore={onExplore}
-            exploredUrls={exploredUrls}
-            exploringUrl={exploringUrl}
+            processedUrls={processedUrls}
           />
         ))}
     </div>
@@ -308,16 +253,12 @@ function TreeSection({
   section,
   selectedUrls,
   onToggle,
-  onExplore,
-  exploredUrls,
-  exploringUrl,
+  processedUrls,
 }: {
   section: NavTreeSection;
   selectedUrls: Set<string>;
   onToggle: (url: string) => void;
-  onExplore?: (modelJsonUrl: string) => Promise<void>;
-  exploredUrls: Set<string>;
-  exploringUrl: string | null;
+  processedUrls?: Record<string, SourceUrlStats>;
 }) {
   const [expanded, setExpanded] = useState(true);
   const allUrls = useMemo(() => collectSectionUrls(section), [section]);
@@ -337,6 +278,10 @@ function TreeSection({
     selectedCount === 0 ? "none" : selectedCount === allUrls.length ? "all" : "some";
   const CheckIcon =
     checkState === "all" ? CheckSquare : checkState === "some" ? MinusSquare : Square;
+
+  const processedCount = processedUrls
+    ? allUrls.filter((u) => processedUrls[u]).length
+    : 0;
 
   return (
     <div
@@ -383,6 +328,22 @@ function TreeSection({
           {section.section_name}
         </span>
 
+        {processedCount > 0 && (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              padding: "1px 8px",
+              borderRadius: 10,
+              background: "#ecfdf5",
+              color: "#059669",
+              border: "1px solid #a7f3d0",
+            }}
+          >
+            {processedCount}/{allUrls.length} processed
+          </span>
+        )}
+
         <span
           style={{
             fontSize: 12,
@@ -404,9 +365,7 @@ function TreeSection({
               depth={0}
               selectedUrls={selectedUrls}
               onToggle={onToggle}
-              onExplore={onExplore}
-              exploredUrls={exploredUrls}
-              exploringUrl={exploringUrl}
+              processedUrls={processedUrls}
             />
           ))}
         </div>
@@ -421,11 +380,8 @@ export default function NavTreeBrowser({
   navTree,
   selectedUrls,
   onSelectionChange,
-  onExplore,
+  processedUrls,
 }: NavTreeBrowserProps) {
-  const [exploredUrls, setExploredUrls] = useState<Set<string>>(new Set());
-  const [exploringUrl, setExploringUrl] = useState<string | null>(null);
-
   const handleToggle = useCallback(
     (url: string) => {
       const next = new Set(selectedUrls);
@@ -436,24 +392,15 @@ export default function NavTreeBrowser({
     [selectedUrls, onSelectionChange],
   );
 
-  const handleExplore = useCallback(
-    async (modelJsonUrl: string) => {
-      if (!onExplore || exploredUrls.has(modelJsonUrl)) return;
-      setExploringUrl(modelJsonUrl);
-      try {
-        await onExplore(modelJsonUrl);
-        setExploredUrls((prev) => new Set(prev).add(modelJsonUrl));
-      } finally {
-        setExploringUrl(null);
-      }
-    },
-    [onExplore, exploredUrls],
-  );
-
   const totalSelectable = navTree.sections.reduce(
     (sum, s) => sum + collectSectionUrls(s).length,
     0,
   );
+
+  const totalProcessed = processedUrls ? Object.keys(processedUrls).length : 0;
+  const totalFilesInKb = processedUrls
+    ? Object.values(processedUrls).reduce((sum, s) => sum + s.total_files, 0)
+    : 0;
 
   return (
     <div>
@@ -463,7 +410,7 @@ export default function NavTreeBrowser({
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 12,
+          marginBottom: totalProcessed > 0 ? 8 : 12,
           padding: "8px 12px",
           background: selectedUrls.size > 0 ? "#f3f0ff" : "var(--surface, #f8f8fa)",
           borderRadius: 8,
@@ -484,6 +431,30 @@ export default function NavTreeBrowser({
         </span>
       </div>
 
+      {/* Processed URLs summary */}
+      {totalProcessed > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+            padding: "8px 12px",
+            background: "#ecfdf5",
+            border: "1px solid #a7f3d0",
+            borderRadius: 8,
+            fontSize: 12,
+            color: "#065f46",
+          }}
+        >
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#059669", flexShrink: 0 }} />
+          <span>
+            <strong>{totalProcessed}</strong> of {totalSelectable} pages already processed
+            ({totalFilesInKb} files in KB)
+          </span>
+        </div>
+      )}
+
       {/* Sections */}
       {navTree.sections.map((section, i) => (
         <TreeSection
@@ -491,9 +462,7 @@ export default function NavTreeBrowser({
           section={section}
           selectedUrls={selectedUrls}
           onToggle={handleToggle}
-          onExplore={onExplore ? handleExplore : undefined}
-          exploredUrls={exploredUrls}
-          exploringUrl={exploringUrl}
+          processedUrls={processedUrls}
         />
       ))}
     </div>
