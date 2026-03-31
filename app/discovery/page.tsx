@@ -114,10 +114,6 @@ function DiscoveryPageContent() {
 
   const { data: links, isLoading, error, mutate, total, pages } = useDiscoveryLinks(statusFilter, page, 50);
 
-  if (speedMode) {
-    return <SpeedDiscovery onExit={() => setSpeedMode(false)} />;
-  }
-
   // Column widths: [checkbox, title+url, status, discovered]
   const { widths, startResize } = useResizableColumns([40, 420, 100, 140]);
 
@@ -251,6 +247,10 @@ function DiscoveryPageContent() {
       setDismissing(false);
     }
   }, [selectedIds, groupBySource, showToast, mutate]);
+
+  if (speedMode) {
+    return <SpeedDiscovery onExit={() => setSpeedMode(false)} />;
+  }
 
   const pendingCount = statusFilter === "pending" ? total : links.filter((l) => l.status === "pending").length;
 

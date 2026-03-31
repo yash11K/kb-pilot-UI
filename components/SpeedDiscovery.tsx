@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { ArrowLeft, Send, XCircle, SkipForward } from "lucide-react";
+import { ArrowLeft, Send, SkipForward } from "lucide-react";
 import SpeedDiscoveryCard from "@/components/SpeedDiscoveryCard";
 import CardStackLoader from "@/components/CardStackLoader";
 import { useDiscoveryLinks } from "@/hooks/useDiscoveryLinks";

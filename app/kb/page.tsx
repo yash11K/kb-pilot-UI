@@ -86,7 +86,7 @@ export default function KBPage() {
         setMessages((prev) => [...prev, { role: "assistant", content: "", results: [] }]);
 
         ctrlRef.current = kbSearch(q, 10, {
-          onSearchStart: (_query, _total) => {
+          onSearchStart: () => {
             // Could show "Searching N documents…" here
           },
           onResult: (raw) => {
