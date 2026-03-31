@@ -241,28 +241,7 @@ export default function KBPage() {
               </div>
             ) : msg.results && msg.results.length > 0 ? (
               /* Retrieve-only: numbered results in a single bubble */
-              <div style={{ maxWidth: "90%", padding: "16px 20px", borderRadius: "16px 16px 16px 4px", background: "#fff", border: "1px solid #ede9fe", fontSize: 14, lineHeight: 1.7, color: "#111827", wordBreak: "break-word" }}>
-                <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, marginBottom: 12 }}>{msg.content}</div>
-                {msg.results.map((r, ri) => (
-                  <div key={ri} style={{ marginBottom: ri < msg.results!.length - 1 ? 16 : 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>{ri + 1}.</span>
-                      <ScorePill score={r.score} />
-                      {r.source_url && (
-                        <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
-                          {r.source_url}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ paddingLeft: 18 }}>
-                      <MdPreview content={r.content} />
-                    </div>
-                    {ri < msg.results!.length - 1 && (
-                      <div style={{ borderBottom: "1px solid #f3f4f6", margin: "12px 0 0" }} />
-                    )}
-                  </div>
-                ))}
-              </div>
+              <RetrieveBubble msg={msg} isLast={i === messages.length - 1} isStreaming={isStreaming} />
             ) : (
               <RAGBubble
                 msg={msg}
@@ -437,6 +416,57 @@ function SourcePill({ index, source }: { index: number; source: ChatSource }) {
 }
 
 /* ── RAG answer bubble with source pills ── */
+
+function RetrieveBubble({
+  msg,
+  isLast,
+  isStreaming,
+}: {
+  msg: ChatEntry;
+  isLast: boolean;
+  isStreaming: boolean;
+}) {
+  const isActiveStream = isStreaming && isLast;
+  const { text: rotatingText, fade } = useRotatingPhrase(RETRIEVE_PHRASES, isActiveStream);
+
+  return (
+    <div style={{ maxWidth: "90%", padding: "16px 20px", borderRadius: "16px 16px 16px 4px", background: "#fff", border: "1px solid #ede9fe", fontSize: 14, lineHeight: 1.7, color: "#111827", wordBreak: "break-word" }}>
+      <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 600, marginBottom: 12 }}>{msg.content}</div>
+      {msg.results!.map((r, ri) => (
+        <div key={ri} style={{ marginBottom: ri < msg.results!.length - 1 ? 16 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#7c3aed", flexShrink: 0 }}>{ri + 1}.</span>
+            <ScorePill score={r.score} />
+            {r.source_url && (
+              <span style={{ fontSize: 10, color: "#9ca3af", fontFamily: "'DM Mono', monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                {r.source_url}
+              </span>
+            )}
+          </div>
+          <div style={{ paddingLeft: 18 }}>
+            <MdPreview content={r.content} />
+          </div>
+          {ri < msg.results!.length - 1 && (
+            <div style={{ borderBottom: "1px solid #f3f4f6", margin: "12px 0 0" }} />
+          )}
+        </div>
+      ))}
+      {isActiveStream && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9ca3af", fontSize: 12, marginTop: 12, paddingTop: 10, borderTop: "1px solid #f3f4f6" }}>
+          <Loader2 size={13} style={{ animation: "spin 0.8s linear infinite", color: "#7c3aed" }} />
+          <span style={{
+            fontStyle: "italic",
+            opacity: fade ? 1 : 0,
+            transform: fade ? "translateY(0)" : "translateY(4px)",
+            transition: "opacity 0.2s ease, transform 0.2s ease",
+          }}>
+            {rotatingText}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const RETRIEVE_PHRASES = [
   "Searching through knowledge base…",
