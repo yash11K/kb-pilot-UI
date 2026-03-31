@@ -438,6 +438,54 @@ function SourcePill({ index, source }: { index: number; source: ChatSource }) {
 
 /* ── RAG answer bubble with source pills ── */
 
+const RETRIEVE_PHRASES = [
+  "Searching through knowledge base…",
+  "Scanning indexed sources…",
+  "Looking for matches…",
+  "Querying the vault…",
+  "Hunting down results…",
+  "Sifting through entries…",
+];
+
+const SOURCE_PHRASES = [
+  "Retrieving sources…",
+  "Pulling relevant documents…",
+  "Gathering references…",
+  "Connecting the dots…",
+  "Locating source material…",
+  "Cross-referencing entries…",
+];
+
+const GENERATE_PHRASES = [
+  "Generating answer…",
+  "Organizing thoughts…",
+  "Piecing it together…",
+  "Synthesizing insights…",
+  "Drafting a response…",
+  "Analyzing context…",
+];
+
+const PHRASE_ROTATE_MS = 2400;
+
+function useRotatingPhrase(phrases: string[], active: boolean) {
+  const [index, setIndex] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  useEffect(() => {
+    if (!active) { setIndex(0); setFade(true); return; }
+    const timer = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setIndex((prev) => (prev + 1) % phrases.length);
+        setFade(true);
+      }, 200);
+    }, PHRASE_ROTATE_MS);
+    return () => clearInterval(timer);
+  }, [active, phrases]);
+
+  return { text: phrases[index], fade };
+}
+
 function RAGBubble({
   msg,
   isLast,
@@ -452,6 +500,9 @@ function RAGBubble({
   const hasSources = msg.sources && msg.sources.length > 0;
   const isActiveStream = isStreaming && isLast;
   const [copied, setCopied] = useState(false);
+
+  const phrases = mode === "retrieve" ? RETRIEVE_PHRASES : hasSources ? GENERATE_PHRASES : SOURCE_PHRASES;
+  const { text: rotatingText, fade } = useRotatingPhrase(phrases, isActiveStream && !msg.content);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(msg.content).then(() => {
@@ -492,7 +543,13 @@ function RAGBubble({
           isActiveStream && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9ca3af", fontSize: 13 }}>
               <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite", color: "#7c3aed" }} />
-              {mode === "retrieve" ? "Searching…" : hasSources ? "Generating answer…" : "Retrieving sources…"}
+              <span style={{
+                opacity: fade ? 1 : 0,
+                transform: fade ? "translateY(0)" : "translateY(4px)",
+                transition: "opacity 0.2s ease, transform 0.2s ease",
+              }}>
+                {rotatingText}
+              </span>
             </div>
           )
         )}
