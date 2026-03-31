@@ -10,9 +10,9 @@ set -euo pipefail
 APP_NAME="kb-frontend"
 APP_DIR="/home/ec2-user/kb-manager"
 REPO_URL="https://github.com/yash11K/kb-pilot-UI.git"
-BACKEND_API="http://54.160.238.80:8000/api/v1"
+BACKEND_API="http://54.160.238.80:80/api/v1"
 NODE_MAJOR=20
-PORT=8000
+PORT=80
 
 echo "══════════════════════════════════════════"
 echo "  KB-Pilot Frontend — EC2 Deploy"
@@ -88,8 +88,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable ${APP_NAME}
 sudo systemctl restart ${APP_NAME}
 
-# ─── 7. Open port 3000 if iptables is active ────────────────────
-echo "[7/7] Ensuring port ${PORT} is open..."
+# ─── 7. Allow Node to bind to port 80 (privileged) ──────────────
+echo "[7/8] Granting Node.js permission to bind port 80..."
+sudo setcap 'cap_net_bind_service=+ep' "$(which node)"
+
+# ─── 8. Open port if iptables is active ──────────────────────────
+echo "[8/8] Ensuring port ${PORT} is open..."
 if command -v iptables &> /dev/null; then
   sudo iptables -I INPUT -p tcp --dport ${PORT} -j ACCEPT 2>/dev/null || true
 fi

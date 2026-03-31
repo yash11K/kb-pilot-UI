@@ -15,6 +15,9 @@ npm ci --production=false
 echo "── Building..."
 npm run build
 
+echo "── Ensuring Node can bind port 80..."
+sudo setcap 'cap_net_bind_service=+ep' "$(which node)"
+
 echo "── Restarting service..."
 sudo systemctl restart $APP_NAME
 
