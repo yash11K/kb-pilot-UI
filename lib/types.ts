@@ -455,6 +455,20 @@ export interface KBSearchResult {
   file_id?: string;
 }
 
+/** A source chunk returned by /kb/chat `sources` event */
+export interface KBChatSource {
+  s3_uri: string;
+  content: string;
+}
+
+/** A result chunk returned by /kb/search `result` event */
+export interface KBSearchResultSSE {
+  content: string;
+  s3_uri: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
 export interface KBChatMessage {
   role: "user" | "assistant";
   content: string;

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Search, Sparkles, Send, Loader2, X, RotateCw } from "lucide-react";
+import { Search, Sparkles, Send, Loader2, X, RotateCw, ChevronDown, ChevronRight, FileText, Copy, Check, Download } from "lucide-react";
 import ScorePill from "@/components/ScorePill";
 import MdPreview from "@/components/MdPreview";
-import { kbSearch, kbChat } from "@/lib/api";
+import { kbSearch, kbChat, getSourceDownloadUrl } from "@/lib/api";
 
 type Mode = "retrieve" | "generate";
 
@@ -38,10 +38,18 @@ const SUGGESTIONS = [
   "What happens if I return the car late?",
 ];
 
+/** Source citation from /kb/chat `sources` event */
+interface ChatSource {
+  s3_uri: string;
+  content: string;
+}
+
 interface ChatEntry {
   role: "user" | "assistant";
   content: string;
   results?: ParsedResult[];
+  /** Sources returned by RAG before the answer streams */
+  sources?: ChatSource[];
 }
 
 export default function KBPage() {
@@ -77,54 +85,69 @@ export default function KBPage() {
         const collected: ParsedResult[] = [];
         setMessages((prev) => [...prev, { role: "assistant", content: "", results: [] }]);
 
-        ctrlRef.current = kbSearch(q, 10,
-          (event, data) => {
-            if (event !== "result") return;
-            try {
-              const raw = JSON.parse(data);
-              collected.push(parseSearchResult(raw));
-              setMessages((prev) => {
-                const updated = [...prev];
-                const last = updated[updated.length - 1];
-                if (last?.role === "assistant") {
-                  updated[updated.length - 1] = {
-                    ...last,
-                    content: `Found ${collected.length} result${collected.length !== 1 ? "s" : ""}`,
-                    results: [...collected],
-                  };
-                }
-                return updated;
-              });
-              scrollToBottom();
-            } catch { /* ignore */ }
+        ctrlRef.current = kbSearch(q, 10, {
+          onSearchStart: (_query, _total) => {
+            // Could show "Searching N documents…" here
           },
-          () => setIsStreaming(false),
-          (err) => { setError(err.message); setIsStreaming(false); },
-        );
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-        ctrlRef.current = kbChat(q, 5,
-          (data) => {
-            let token = data;
-            try {
-              const parsed = JSON.parse(data);
-              if (typeof parsed === "string") token = parsed;
-              else if (parsed.token) token = parsed.token;
-              else if (parsed.text) token = parsed.text;
-            } catch { /* use raw */ }
+          onResult: (raw) => {
+            collected.push(parseSearchResult(raw as unknown as Record<string, unknown>));
             setMessages((prev) => {
               const updated = [...prev];
               const last = updated[updated.length - 1];
               if (last?.role === "assistant") {
-                updated[updated.length - 1] = { ...last, content: last.content + token };
+                updated[updated.length - 1] = {
+                  ...last,
+                  content: `Found ${collected.length} result${collected.length !== 1 ? "s" : ""}`,
+                  results: [...collected],
+                };
               }
               return updated;
             });
             scrollToBottom();
           },
-          () => setIsStreaming(false),
-          (err) => { setError(err.message); setIsStreaming(false); },
-        );
+          onSearchEnd: () => {
+            setIsStreaming(false);
+          },
+          onError: (err) => {
+            setError(err.message);
+            setIsStreaming(false);
+          },
+        });
+      } else {
+        // RAG mode: show empty assistant bubble, then populate sources → stream tokens → done
+        setMessages((prev) => [...prev, { role: "assistant", content: "", sources: [] }]);
+
+        ctrlRef.current = kbChat(q, 5, {
+          onSources: (sources) => {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last?.role === "assistant") {
+                updated[updated.length - 1] = { ...last, sources };
+              }
+              return updated;
+            });
+            scrollToBottom();
+          },
+          onToken: (text) => {
+            setMessages((prev) => {
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last?.role === "assistant") {
+                updated[updated.length - 1] = { ...last, content: last.content + text };
+              }
+              return updated;
+            });
+            scrollToBottom();
+          },
+          onDone: () => {
+            setIsStreaming(false);
+          },
+          onError: (err) => {
+            setError(err.message);
+            setIsStreaming(false);
+          },
+        });
       }
     },
     [input, isStreaming, mode, scrollToBottom],
@@ -241,21 +264,12 @@ export default function KBPage() {
                 ))}
               </div>
             ) : (
-              <div style={{ maxWidth: "80%", padding: "14px 18px", borderRadius: "16px 16px 16px 4px", background: "#fff", border: "1px solid #f3f4f6", fontSize: 14, lineHeight: 1.7, color: "#111827", wordBreak: "break-word" }}>
-                {msg.content ? (
-                  <MdPreview content={msg.content} />
-                ) : (
-                  isStreaming && i === messages.length - 1 && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9ca3af", fontSize: 13 }}>
-                      <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite", color: "#7c3aed" }} />
-                      {mode === "retrieve" ? "Searching…" : "Generating…"}
-                    </div>
-                  )
-                )}
-                {msg.content && isStreaming && i === messages.length - 1 && (
-                  <span style={{ display: "inline-block", width: 6, height: 14, background: "#7c3aed", marginLeft: 2, animation: "blink 1s step-end infinite", verticalAlign: "text-bottom" }} />
-                )}
-              </div>
+              <RAGBubble
+                msg={msg}
+                isLast={i === messages.length - 1}
+                isStreaming={isStreaming}
+                mode={mode}
+              />
             )}
           </div>
         ))}
@@ -325,6 +339,187 @@ export default function KBPage() {
             {isStreaming ? <Loader2 size={16} style={{ animation: "spin 0.8s linear infinite" }} /> : <Send size={16} />}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Source pill with expandable dropdown ── */
+
+/** Extract the readable filename from an S3 URI, e.g. "pet-policy-for-rental-cars.md" */
+function s3Filename(uri: string): string {
+  const last = uri.split("/").pop() || uri;
+  return decodeURIComponent(last);
+}
+
+function SourcePill({ index, source }: { index: number; source: ChatSource }) {
+  const [open, setOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const filename = s3Filename(source.s3_uri);
+
+  const handleDownload = useCallback(async () => {
+    setDownloading(true);
+    try {
+      const url = await getSourceDownloadUrl(source.s3_uri);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.click();
+    } catch {
+      // silently fail — endpoint may not exist yet
+    } finally {
+      setDownloading(false);
+    }
+  }, [source.s3_uri, filename]);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          padding: "5px 12px", borderRadius: 16,
+          border: "1px solid #ede9fe", background: open ? "#f5f3ff" : "#fff",
+          fontSize: 11, fontWeight: 600, color: "#7c3aed",
+          cursor: "pointer", fontFamily: "inherit",
+          transition: "all 0.15s", maxWidth: 320,
+        }}
+      >
+        <FileText size={11} style={{ flexShrink: 0 }} />
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          [{index + 1}] {filename}
+        </span>
+        {open ? <ChevronDown size={11} style={{ flexShrink: 0 }} /> : <ChevronRight size={11} style={{ flexShrink: 0 }} />}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 4, padding: "8px 12px",
+          background: "#f5f3ff", border: "1px solid #ede9fe",
+          borderRadius: 10, fontSize: 11, lineHeight: 1.5,
+          color: "#6b7280", animation: "fadeSlideIn 0.15s ease",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+            <div style={{
+              fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#9ca3af",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              flex: 1,
+            }}>
+              {source.s3_uri}
+            </div>
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              title="Download source file"
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "3px 8px", borderRadius: 6,
+                border: "1px solid #ede9fe", background: "#fff",
+                fontSize: 10, fontWeight: 600, color: "#7c3aed",
+                cursor: downloading ? "default" : "pointer",
+                opacity: downloading ? 0.5 : 1,
+                flexShrink: 0, fontFamily: "inherit",
+                transition: "all 0.15s",
+              }}
+            >
+              {downloading
+                ? <Loader2 size={10} style={{ animation: "spin 0.8s linear infinite" }} />
+                : <Download size={10} />}
+              Download
+            </button>
+          </div>
+          {source.content && <div style={{ marginTop: 6 }}>{source.content}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── RAG answer bubble with source pills ── */
+
+function RAGBubble({
+  msg,
+  isLast,
+  isStreaming,
+  mode,
+}: {
+  msg: ChatEntry;
+  isLast: boolean;
+  isStreaming: boolean;
+  mode: Mode;
+}) {
+  const hasSources = msg.sources && msg.sources.length > 0;
+  const isActiveStream = isStreaming && isLast;
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(msg.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [msg.content]);
+
+  return (
+    <div style={{ maxWidth: "85%", fontSize: 14, lineHeight: 1.7, color: "#111827", wordBreak: "break-word" }}>
+      {/* Source pills row */}
+      {hasSources && (
+        <div style={{ marginBottom: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {msg.sources!.map((src, si) => (
+            <SourcePill key={si} index={si} source={src} />
+          ))}
+        </div>
+      )}
+
+      {/* Answer bubble */}
+      <div style={{
+        padding: "14px 18px", background: "#fff",
+        border: hasSources ? "1.5px solid #ede9fe" : "1px solid #f3f4f6",
+        borderRadius: "16px 16px 16px 4px",
+      }}>
+        {msg.content ? (
+          <>
+            <MdPreview content={msg.content} />
+            {isActiveStream && (
+              <span style={{
+                display: "inline-block", width: 6, height: 14,
+                background: "#7c3aed", borderRadius: 1, marginLeft: 2,
+                animation: "blink 1s step-end infinite", verticalAlign: "text-bottom",
+              }} />
+            )}
+          </>
+        ) : (
+          isActiveStream && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#9ca3af", fontSize: 13 }}>
+              <Loader2 size={14} style={{ animation: "spin 0.8s linear infinite", color: "#7c3aed" }} />
+              {mode === "retrieve" ? "Searching…" : hasSources ? "Generating answer…" : "Retrieving sources…"}
+            </div>
+          )
+        )}
+
+        {msg.content && !isActiveStream && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            marginTop: 10, paddingTop: 8, borderTop: "1px solid #f3f4f6",
+          }}>
+            <button
+              onClick={handleCopy}
+              style={{
+                display: "flex", alignItems: "center", gap: 4,
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: 11, color: "#9ca3af", padding: 0,
+              }}
+            >
+              {copied ? <Check size={13} color="#16a34a" /> : <Copy size={13} />}
+              {copied ? "Copied" : ""}
+            </button>
+            {hasSources && (
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                {msg.sources!.length} source{msg.sources!.length !== 1 ? "s" : ""} referenced
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

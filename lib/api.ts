@@ -350,19 +350,44 @@ export function streamSSE(
   return ctrl;
 }
 
+export interface KBSearchCallbacks {
+  onSearchStart?: (query: string, total: number) => void;
+  onResult?: (result: { content: string; s3_uri: string; score: number; metadata: Record<string, unknown> }) => void;
+  onSearchEnd?: (query: string, total: number) => void;
+  onError?: (err: Error) => void;
+}
+
 export function kbSearch(
   query: string,
   limit = 10,
-  onResult: (event: string, data: string) => void,
-  onDone?: () => void,
-  onError?: (err: Error) => void,
+  callbacks: KBSearchCallbacks,
 ): AbortController {
   return streamSSE(
     "/kb/search",
     { query, limit },
-    (event, data) => onResult(event, data),
-    onDone,
-    onError,
+    (event, data) => {
+      try {
+        const parsed = JSON.parse(data);
+        switch (event) {
+          case "search_start":
+            callbacks.onSearchStart?.(parsed.query, parsed.total);
+            break;
+          case "result":
+            callbacks.onResult?.(parsed);
+            break;
+          case "search_end":
+            callbacks.onSearchEnd?.(parsed.query, parsed.total);
+            break;
+          case "error":
+            callbacks.onError?.(new Error(parsed.message));
+            break;
+        }
+      } catch { /* ignore non-JSON */ }
+    },
+    () => {
+      // stream closed — if search_end wasn't sent, treat as done
+    },
+    callbacks.onError,
   );
 }
 
@@ -394,20 +419,65 @@ export function streamAgentChat(
   );
 }
 
+export interface KBChatCallbacks {
+  onSources?: (sources: { s3_uri: string; content: string }[]) => void;
+  onToken?: (text: string) => void;
+  onDone?: (query: string) => void;
+  onError?: (err: Error) => void;
+}
+
 export function kbChat(
   query: string,
   contextLimit = 5,
-  onToken: (data: string) => void,
-  onDone?: () => void,
-  onError?: (err: Error) => void,
+  callbacks: KBChatCallbacks,
 ): AbortController {
   return streamSSE(
     "/kb/chat",
     { query, context_limit: contextLimit },
-    (_event, data) => onToken(data),
-    onDone,
-    onError,
+    (event, data) => {
+      try {
+        const parsed = JSON.parse(data);
+        switch (event) {
+          case "sources":
+            callbacks.onSources?.(parsed.sources ?? []);
+            break;
+          case "token":
+            callbacks.onToken?.(parsed.text ?? "");
+            break;
+          case "done":
+            callbacks.onDone?.(parsed.query ?? query);
+            break;
+          case "error":
+            callbacks.onError?.(new Error(parsed.message));
+            break;
+        }
+      } catch { /* ignore non-JSON */ }
+    },
+    () => {
+      // stream closed
+    },
+    callbacks.onError,
   );
+}
+
+// ── S3 Source Download ───────────────────────────────────────
+
+/**
+ * Get a presigned download URL for an S3 source file.
+ * Backend returns { url: "https://..." } with a short-lived presigned URL.
+ */
+export async function getSourceDownloadUrl(s3Uri: string): Promise<string> {
+  const res = await fetch(`${BASE}/kb/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ s3_uri: s3Uri }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Failed to get download URL (${res.status})`);
+  }
+  const data = await res.json();
+  return data.url;
 }
 
 // ── Context Agent ──────────────────────────────────────────
