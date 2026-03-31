@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useState, useCallback } from "react";
 import Sidebar from "@/components/Sidebar";
 import IngestWizard from "@/components/IngestWizard";
 import AgentChatPanel from "@/components/AgentChatPanel";
+import PilotPromptBar from "@/components/PilotPromptBar";
 import { useActiveJobs } from "@/hooks/useActiveJobs";
 
 export default function ShellLayout({
@@ -14,7 +14,27 @@ export default function ShellLayout({
 }) {
   const [showIngestWizard, setShowIngestWizard] = useState(false);
   const [showAgentChat, setShowAgentChat] = useState(false);
+  const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const { mutate: activeJobsMutate } = useActiveJobs();
+
+  const handlePromptSubmit = useCallback((prompt: string) => {
+    setPendingPrompt(prompt);
+    setShowAgentChat(true);
+  }, []);
+
+  const handleExpandChat = useCallback(() => {
+    setPendingPrompt(null);
+    setShowAgentChat(true);
+  }, []);
+
+  const handleCloseChat = useCallback(() => {
+    setShowAgentChat(false);
+    setPendingPrompt(null);
+  }, []);
+
+  const handlePromptConsumed = useCallback(() => {
+    setPendingPrompt(null);
+  }, []);
 
   return (
     <div
@@ -40,44 +60,17 @@ export default function ShellLayout({
           {children}
         </div>
 
-        {/* Agent chat trigger bar */}
-        <div style={{ padding: "0 24px 16px", flexShrink: 0 }}>
-          <button
-            onClick={() => setShowAgentChat(true)}
-            style={{
-              width: "100%",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "12px 18px",
-              background: "#fff",
-              border: "1.5px solid #ede9fe",
-              borderRadius: 14,
-              cursor: "pointer",
-              fontFamily: "inherit",
-              fontSize: 13,
-              color: "#9ca3af",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
-              transition: "border-color 0.15s, box-shadow 0.15s",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = "#c4b5fd";
-              e.currentTarget.style.boxShadow = "0 4px 16px rgba(124,58,237,0.1)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "#ede9fe";
-              e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.04)";
-            }}
-          >
-            <Sparkles size={15} color="#7c3aed" style={{ flexShrink: 0 }} />
-            Ask the KB Agent…
-          </button>
-        </div>
+        <PilotPromptBar
+          onSubmitPrompt={handlePromptSubmit}
+          onExpand={handleExpandChat}
+        />
       </main>
 
       <AgentChatPanel
         open={showAgentChat}
-        onClose={() => setShowAgentChat(false)}
+        onClose={handleCloseChat}
+        initialPrompt={pendingPrompt}
+        onPromptConsumed={handlePromptConsumed}
       />
 
       {showIngestWizard && (

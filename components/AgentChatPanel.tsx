@@ -24,15 +24,18 @@ const STARTER_CHIPS = [
 interface AgentChatPanelProps {
   open: boolean;
   onClose: () => void;
+  initialPrompt?: string | null;
+  onPromptConsumed?: () => void;
 }
 
-export default function AgentChatPanel({ open, onClose }: AgentChatPanelProps) {
+export default function AgentChatPanel({ open, onClose, initialPrompt, onPromptConsumed }: AgentChatPanelProps) {
   const { messages, status, error, send, clear, retry } = useAgentChat();
   const [input, setInput] = useState("");
   const [visible, setVisible] = useState(false);
   const [animating, setAnimating] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const consumedPromptRef = useRef<string | null>(null);
 
   const isBusy = status === "waiting" || status === "streaming";
 
@@ -49,6 +52,15 @@ export default function AgentChatPanel({ open, onClose }: AgentChatPanelProps) {
       return () => clearTimeout(timer);
     }
   }, [open]);
+
+  // Auto-send initialPrompt when panel opens with one
+  useEffect(() => {
+    if (open && initialPrompt && initialPrompt !== consumedPromptRef.current && status === "idle") {
+      consumedPromptRef.current = initialPrompt;
+      send(initialPrompt);
+      onPromptConsumed?.();
+    }
+  }, [open, initialPrompt, status, send, onPromptConsumed]);
 
   // Auto-scroll on new messages
   useEffect(() => {
