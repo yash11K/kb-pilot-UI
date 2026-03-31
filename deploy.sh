@@ -12,7 +12,7 @@ APP_DIR="/home/ec2-user/kb-manager"
 REPO_URL="https://github.com/yash11K/kb-pilot-UI.git"
 BACKEND_API="http://54.160.238.80:8000/api/v1"
 NODE_MAJOR=20
-PORT=3000
+PORT=8000
 
 echo "══════════════════════════════════════════"
 echo "  KB-Pilot Frontend — EC2 Deploy"
