@@ -315,24 +315,76 @@ function StreamingCursor() {
   );
 }
 
+const THINKING_PHRASES = [
+  "Searching through knowledge base…",
+  "Organizing thoughts…",
+  "Connecting the dots…",
+  "Scanning sources…",
+  "Piecing it together…",
+  "Digging deeper…",
+  "Cross-referencing entries…",
+  "Analyzing context…",
+  "Pulling relevant data…",
+  "Almost there…",
+];
+
+const PHRASE_INTERVAL = 2200;
+
 function PulsingDots() {
+  const [phraseIndex, setPhraseIndex] = useState(0);
+  const [fade, setFade] = useState(true);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFade(false);
+      setTimeout(() => {
+        setPhraseIndex((prev) => (prev + 1) % THINKING_PHRASES.length);
+        setFade(true);
+      }, 200);
+    }, PHRASE_INTERVAL);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
-    <div style={{ display: "flex", gap: 4, alignItems: "center", padding: "8px 14px", background: "#f9fafb", borderRadius: "14px 14px 14px 4px", width: "fit-content" }}>
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: "50%",
-            background: "#7c3aed",
-            animation: `pulse 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }}
-        />
-      ))}
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "10px 14px",
+        background: "#f9fafb",
+        borderRadius: "14px 14px 14px 4px",
+        width: "fit-content",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          width: 6,
+          height: 6,
+          borderRadius: "50%",
+          background: "#7c3aed",
+          animation: "pulse 1.2s ease-in-out infinite",
+          flexShrink: 0,
+        }}
+      />
+      <span
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          fontStyle: "italic",
+          opacity: fade ? 1 : 0,
+          transform: fade ? "translateY(0)" : "translateY(4px)",
+          transition: "opacity 0.2s ease, transform 0.2s ease",
+        }}
+      >
+        {THINKING_PHRASES[phraseIndex]}
+      </span>
     </div>
   );
 }
+
+
 
 /* ── Styles ──────────────────────────────────────────────── */
 
