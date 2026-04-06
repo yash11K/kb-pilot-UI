@@ -19,7 +19,7 @@ interface StatCardConfig {
 
 const CARDS: StatCardConfig[] = [
   { label: "Total Files", key: "total_files", icon: <File size={18} />, accent: "#7c3aed", href: "/files" },
-  { label: "Pending Review", key: "pending_review", icon: <Clock size={18} />, accent: "#d97706", href: "/queue" },
+  { label: "Pending Review", key: "pending_review", icon: <Clock size={18} />, accent: "#d97706", href: "/files?tab=pending" },
   { label: "Approved / In S3", key: "approved", icon: <Check size={18} />, accent: "#16a34a", href: "/files?status=in_s3" },
   { label: "Rejected", key: "rejected", icon: <X size={18} />, accent: "#dc2626", href: "/files?status=rejected" },
   { label: "Avg Score", key: "avg_score", icon: <Zap size={18} />, accent: "#0891b2", href: null },
@@ -31,9 +31,9 @@ function isCardActive(card: StatCardConfig, pathname: string, searchParams: stri
   const [cardPath, cardQuery] = card.href.split("?");
   if (pathname !== cardPath) return false;
 
-  // If the card has no query params, it's active only when the page has no status param
+  // If the card has no query params, it's active only when the page has no filtering params
   if (!cardQuery) {
-    return !searchParams.includes("status=");
+    return !searchParams.includes("status=") && !searchParams.includes("tab=");
   }
 
   // If the card has query params, check they match
