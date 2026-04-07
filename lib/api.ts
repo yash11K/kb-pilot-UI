@@ -20,11 +20,36 @@ import type {
   DeepLinkStatus,
   UrlLookupResponse,
 } from "./types";
+import { getToken, triggerLogout } from "@/components/AuthGate";
 
 const BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
 // ── Helpers ──────────────────────────────────────────────────
+
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+function handleAuthError(res: Response): void {
+  if (res.status === 401) {
+    triggerLogout();
+    throw new Error("Session expired. Please re-enter your access code.");
+  }
+}
+
+/** Authenticated fetch — injects Bearer token and handles 401 globally. */
+async function authFetch(input: string, init?: RequestInit): Promise<Response> {
+  const merged: RequestInit = { ...init };
+  const extra = (init?.headers as Record<string, string>) || {};
+  merged.headers = authHeaders(extra);
+  const res = await fetch(input, merged);
+  handleAuthError(res);
+  return res;
+}
 
 export function buildQueryString(
   params: Record<string, string | number | undefined>,
@@ -39,7 +64,7 @@ export function buildQueryString(
 // ── Ingestion ────────────────────────────────────────────────
 
 export async function startIngestion(req: IngestRequest): Promise<BatchIngestResponse> {
-  const res = await fetch(`${BASE}/ingest`, {
+  const res = await authFetch(`${BASE}/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -48,7 +73,7 @@ export async function startIngestion(req: IngestRequest): Promise<BatchIngestRes
 }
 
 export async function getIngestionJob(jobId: string): Promise<IngestionJob> {
-  const res = await fetch(`${BASE}/ingest/${jobId}`);
+  const res = await authFetch(`${BASE}/ingest/${jobId}`);
   return res.json();
 }
 
@@ -58,12 +83,12 @@ export async function getQueueFiles(
   filters: QueueFilters,
 ): Promise<PaginatedResponse<KBFileListItem>> {
   const qs = buildQueryString(filters as Record<string, string | number | undefined>);
-  const res = await fetch(`${BASE}/queue${qs}`);
+  const res = await authFetch(`${BASE}/queue${qs}`);
   return res.json();
 }
 
 export async function getQueueFileDetail(fileId: string): Promise<KBFile> {
-  const res = await fetch(`${BASE}/queue/${fileId}`);
+  const res = await authFetch(`${BASE}/queue/${fileId}`);
   return res.json();
 }
 
@@ -74,7 +99,7 @@ export async function acceptFile(
 ): Promise<ActionResponse> {
   const body: Record<string, string> = { reviewed_by: reviewedBy };
   if (reviewNotes) body.review_notes = reviewNotes;
-  const res = await fetch(`${BASE}/queue/${fileId}/accept`, {
+  const res = await authFetch(`${BASE}/queue/${fileId}/accept`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -87,7 +112,7 @@ export async function rejectFile(
   reviewedBy: string,
   reviewNotes: string,
 ): Promise<ActionResponse> {
-  const res = await fetch(`${BASE}/queue/${fileId}/reject`, {
+  const res = await authFetch(`${BASE}/queue/${fileId}/reject`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reviewed_by: reviewedBy, review_notes: reviewNotes }),
@@ -100,7 +125,7 @@ export async function updateFileContent(
   mdContent: string,
   reviewedBy: string,
 ): Promise<ActionResponse> {
-  const res = await fetch(`${BASE}/queue/${fileId}/update`, {
+  const res = await authFetch(`${BASE}/queue/${fileId}/update`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ md_content: mdContent, reviewed_by: reviewedBy }),
@@ -114,26 +139,26 @@ export async function getAllFiles(
   filters: FileFilters,
 ): Promise<PaginatedResponse<KBFileListItem>> {
   const qs = buildQueryString(filters as Record<string, string | number | undefined>);
-  const res = await fetch(`${BASE}/files${qs}`);
+  const res = await authFetch(`${BASE}/files${qs}`);
   return res.json();
 }
 
 export async function getFileDetail(fileId: string): Promise<KBFile> {
-  const res = await fetch(`${BASE}/files/${fileId}`);
+  const res = await authFetch(`${BASE}/files/${fileId}`);
   return res.json();
 }
 
 // ── Stats ────────────────────────────────────────────────────
 
 export async function getStats(): Promise<StatsResponse> {
-  const res = await fetch(`${BASE}/stats`);
+  const res = await authFetch(`${BASE}/stats`);
   return res.json();
 }
 
 // ── Revalidation ─────────────────────────────────────────────
 
 export async function revalidateFile(fileId: string): Promise<KBFile> {
-  const res = await fetch(`${BASE}/files/${fileId}/revalidate`, {
+  const res = await authFetch(`${BASE}/files/${fileId}/revalidate`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -144,7 +169,7 @@ export async function revalidateFile(fileId: string): Promise<KBFile> {
 }
 
 export async function revalidateUniqueness(fileId: string): Promise<KBFile> {
-  const res = await fetch(`${BASE}/files/${fileId}/revalidate-uniqueness`, {
+  const res = await authFetch(`${BASE}/files/${fileId}/revalidate-uniqueness`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -157,7 +182,7 @@ export async function revalidateUniqueness(fileId: string): Promise<KBFile> {
 export async function batchRevalidate(
   fileIds: string[],
 ): Promise<BatchRevalidateResponse> {
-  const res = await fetch(`${BASE}/revalidate`, {
+  const res = await authFetch(`${BASE}/revalidate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ file_ids: fileIds }),
@@ -172,7 +197,7 @@ export async function batchRevalidate(
 export async function batchRevalidateUniqueness(
   fileIds: string[],
 ): Promise<BatchRevalidateResponse> {
-  const res = await fetch(`${BASE}/revalidate-uniqueness`, {
+  const res = await authFetch(`${BASE}/revalidate-uniqueness`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ file_ids: fileIds }),
@@ -187,7 +212,7 @@ export async function batchRevalidateUniqueness(
 export async function getRevalidationJob(
   jobId: string,
 ): Promise<RevalidationJob> {
-  const res = await fetch(`${BASE}/revalidate/${jobId}`);
+  const res = await authFetch(`${BASE}/revalidate/${jobId}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Failed to fetch job (${res.status})`);
@@ -198,7 +223,7 @@ export async function getRevalidationJob(
 // ── Sources ──────────────────────────────────────────────────
 
 export async function getActiveSourceJobs(): Promise<ActiveJobsMap> {
-  const res = await fetch(`${BASE}/sources/active-jobs`);
+  const res = await authFetch(`${BASE}/sources/active-jobs`);
   return res.json();
 }
 
@@ -206,12 +231,12 @@ export async function getSources(
   params: { region?: string; brand?: string; page?: number; size?: number },
 ): Promise<PaginatedResponse<SourceListItem>> {
   const qs = buildQueryString(params as Record<string, string | number | undefined>);
-  const res = await fetch(`${BASE}/sources${qs}`);
+  const res = await authFetch(`${BASE}/sources${qs}`);
   return res.json();
 }
 
 export async function getSourceDetail(sourceId: string): Promise<SourceDetail> {
-  const res = await fetch(`${BASE}/sources/${sourceId}`);
+  const res = await authFetch(`${BASE}/sources/${sourceId}`);
   return res.json();
 }
 
@@ -221,12 +246,12 @@ export async function getSourceJobs(
   size: number,
 ): Promise<PaginatedResponse<IngestionJob>> {
   const qs = buildQueryString({ page, size });
-  const res = await fetch(`${BASE}/sources/${sourceId}/jobs${qs}`);
+  const res = await authFetch(`${BASE}/sources/${sourceId}/jobs${qs}`);
   return res.json();
 }
 
 export async function reIngestSource(sourceId: string): Promise<StartIngestionResponse> {
-  const res = await fetch(`${BASE}/sources/${sourceId}/ingest`, {
+  const res = await authFetch(`${BASE}/sources/${sourceId}/ingest`, {
     method: "POST",
   });
   return res.json();
@@ -235,7 +260,7 @@ export async function reIngestSource(sourceId: string): Promise<StartIngestionRe
 // ── Source URL Lookup ────────────────────────────────────────
 
 export async function lookupProcessedUrls(urls: string[]): Promise<UrlLookupResponse> {
-  const res = await fetch(`${BASE}/sources/lookup-urls`, {
+  const res = await authFetch(`${BASE}/sources/lookup-urls`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ urls }),
@@ -251,7 +276,7 @@ export async function lookupProcessedUrls(urls: string[]): Promise<UrlLookupResp
 
 export async function fetchNavTree(url: string, forceRefresh = false): Promise<NavTree> {
   const qs = buildQueryString({ url, force_refresh: forceRefresh ? "true" : undefined });
-  const res = await fetch(`${BASE}/nav/tree${qs}`);
+  const res = await authFetch(`${BASE}/nav/tree${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Failed to load navigation tree (${res.status})`);
@@ -263,7 +288,7 @@ export async function fetchNavTree(url: string, forceRefresh = false): Promise<N
 
 export async function getAllDeepLinks(status?: DeepLinkStatus, page = 1, size = 50): Promise<PaginatedResponse<DeepLink>> {
   const qs = buildQueryString({ status, page, size });
-  const res = await fetch(`${BASE}/deep-links${qs}`);
+  const res = await authFetch(`${BASE}/deep-links${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Failed to load deep links (${res.status})`);
@@ -273,7 +298,7 @@ export async function getAllDeepLinks(status?: DeepLinkStatus, page = 1, size = 
 
 export async function getDeepLinks(sourceId: string, status = "pending", foundInPage?: string): Promise<DeepLink[]> {
   const qs = buildQueryString({ status, found_in_page: foundInPage });
-  const res = await fetch(`${BASE}/deep-links/${sourceId}${qs}`);
+  const res = await authFetch(`${BASE}/deep-links/${sourceId}${qs}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Failed to load deep links (${res.status})`);
@@ -285,7 +310,7 @@ export async function confirmDeepLinks(
   sourceId: string,
   linkIds: string[],
 ): Promise<StartIngestionResponse> {
-  const res = await fetch(`${BASE}/deep-links/${sourceId}/confirm`, {
+  const res = await authFetch(`${BASE}/deep-links/${sourceId}/confirm`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ link_ids: linkIds }),
@@ -301,7 +326,7 @@ export async function dismissDeepLinks(
   sourceId: string,
   linkIds: string[],
 ): Promise<void> {
-  const res = await fetch(`${BASE}/deep-links/${sourceId}/dismiss`, {
+  const res = await authFetch(`${BASE}/deep-links/${sourceId}/dismiss`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ link_ids: linkIds }),
@@ -329,7 +354,7 @@ export function streamSSE(
 
   (async () => {
     try {
-      const res = await fetch(`${BASE}${url}`, {
+      const res = await authFetch(`${BASE}${url}`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify(body),
@@ -337,6 +362,11 @@ export function streamSSE(
       });
 
       if (!res.ok) {
+        if (res.status === 401) {
+          // already handled by authFetch, but just in case
+          triggerLogout();
+          throw new Error("Session expired");
+        }
         const errBody = await res.json().catch(() => ({}));
         throw new Error(errBody.detail || `Request failed (${res.status})`);
       }
@@ -493,7 +523,7 @@ export function kbChat(
  * Backend returns { url: "https://..." } with a short-lived presigned URL.
  */
 export async function getSourceDownloadUrl(s3Uri: string): Promise<string> {
-  const res = await fetch(`${BASE}/kb/download`, {
+  const res = await authFetch(`${BASE}/kb/download`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ s3_uri: s3Uri }),
@@ -545,7 +575,7 @@ export async function startUniquenessReview(
   fileId: string,
   limit = 5,
 ): Promise<UniquenessReviewSession> {
-  const res = await fetch(`${BASE}/files/${fileId}/uniqueness-review?limit=${limit}`, {
+  const res = await authFetch(`${BASE}/files/${fileId}/uniqueness-review?limit=${limit}`, {
     method: "POST",
   });
   if (!res.ok) {
@@ -559,7 +589,7 @@ export async function getPairwiseComparison(
   fileId: string,
   similarFileId: string,
 ): Promise<PairwiseComparison> {
-  const res = await fetch(`${BASE}/files/${fileId}/similar/${similarFileId}`);
+  const res = await authFetch(`${BASE}/files/${fileId}/similar/${similarFileId}`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Pairwise comparison failed (${res.status})`);
@@ -576,7 +606,7 @@ export async function takeSimilarAction(
 ): Promise<SimilarActionResponse> {
   const body: Record<string, string> = { action, reviewed_by: reviewedBy };
   if (notes) body.notes = notes;
-  const res = await fetch(`${BASE}/files/${fileId}/similar/${similarFileId}/action`, {
+  const res = await authFetch(`${BASE}/files/${fileId}/similar/${similarFileId}/action`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

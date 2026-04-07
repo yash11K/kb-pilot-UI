@@ -6,6 +6,7 @@ import IngestWizard from "@/components/IngestWizard";
 import AgentChatPanel from "@/components/AgentChatPanel";
 import PilotPromptBar from "@/components/PilotPromptBar";
 import { useActiveJobs } from "@/hooks/useActiveJobs";
+import AuthGate from "@/components/AuthGate";
 
 export default function ShellLayout({
   children,
@@ -37,6 +38,7 @@ export default function ShellLayout({
   }, []);
 
   return (
+    <AuthGate>
     <div
       style={{
         display: "flex",
@@ -80,5 +82,6 @@ export default function ShellLayout({
         />
       )}
     </div>
+    </AuthGate>
   );
 }
