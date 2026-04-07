@@ -14,7 +14,6 @@ import {
   X,
 } from "lucide-react";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
-import ScorePill from "@/components/ScorePill";
 import Badge from "@/components/Badge";
 import MdPreview from "@/components/MdPreview";
 import { DEEP_LINK_STATUS_CONFIG, scoreColor } from "@/lib/types";
