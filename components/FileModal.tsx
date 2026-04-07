@@ -10,7 +10,7 @@ import MdPreview from "@/components/MdPreview";
 import FileDetailsCollapsible from "@/components/FileDetailsCollapsible";
 import { STATUS_CONFIG } from "@/lib/types";
 import { useFileDetail } from "@/hooks/useFileDetail";
-import { acceptFile, rejectFile, updateFileContent, revalidateFile } from "@/lib/api";
+import { acceptFile, rejectFile, updateFileContent, revalidateFile, revalidateUniqueness } from "@/lib/api";
 import { useToast } from "@/components/Toast";
 
 interface FileModalProps {
@@ -36,6 +36,7 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
   const [rejectNotes, setRejectNotes] = useState("");
   const [showReject, setShowReject] = useState(false);
   const [revalidating, setRevalidating] = useState(false);
+  const [recheckingUniqueness, setRecheckingUniqueness] = useState(false);
 
   const { mutate: globalMutate } = useSWRConfig();
   const { showToast } = useToast();
@@ -86,6 +87,22 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
       showToast(msg, "error");
     } finally {
       setRevalidating(false);
+    }
+  };
+
+  const handleRecheckUniqueness = async () => {
+    setRecheckingUniqueness(true);
+    try {
+      const updated = await revalidateUniqueness(fileId);
+      await mutateFileDetail(updated, { revalidate: false });
+      await invalidateCache();
+      showToast("Uniqueness check complete", "success");
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Uniqueness service unavailable";
+      showToast(msg, "error");
+    } finally {
+      setRecheckingUniqueness(false);
     }
   };
 
@@ -463,9 +480,11 @@ export default function FileModal({ fileId, source, onClose }: FileModalProps) {
                     file={file}
                     canAct={canAct}
                     revalidating={revalidating}
+                    recheckingUniqueness={recheckingUniqueness}
                     showReject={showReject}
                     rejectNotes={rejectNotes}
                     onRevalidate={handleRevalidate}
+                    onRecheckUniqueness={handleRecheckUniqueness}
                     onAccept={handleAccept}
                     onReject={handleReject}
                     onShowReject={setShowReject}

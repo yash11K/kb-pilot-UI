@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import Badge from "@/components/Badge";
+import { ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from "lucide-react";
 import type { SourceListItem } from "@/lib/types";
 
 interface SourcesTableProps {
@@ -15,7 +16,25 @@ interface SourcesTableProps {
   onPageChange?: (page: number) => void;
 }
 
-const COLUMNS = ["Label", "URL", "Brand", "Region", "Section", "Last Ingested", "Created"];
+type SortKey = "nav_label" | "url" | "brand" | "region" | "nav_section" | "last_ingested_at" | "created_at";
+type SortDir = "asc" | "desc";
+
+interface ColumnDef {
+  label: string;
+  key: SortKey;
+  filterable?: boolean;
+  width?: string;
+}
+
+const COLUMNS: ColumnDef[] = [
+  { label: "Label", key: "nav_label", filterable: true },
+  { label: "URL", key: "url", filterable: true },
+  { label: "Brand", key: "brand", filterable: true },
+  { label: "Region", key: "region", filterable: true },
+  { label: "Section", key: "nav_section", filterable: true },
+  { label: "Last Ingested", key: "last_ingested_at" },
+  { label: "Created", key: "created_at" },
+];
 
 function SkeletonBlock({ width }: { width: number | string }) {
   return (
@@ -41,6 +60,11 @@ function fmtDate(d: string | null): string {
   });
 }
 
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <ChevronsUpDown size={12} style={{ opacity: 0.3 }} />;
+  return dir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+}
+
 export default function SourcesTable({
   sources,
   activeJobs,
@@ -51,17 +75,65 @@ export default function SourcesTable({
   onPageChange,
 }: SourcesTableProps) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [filters, setFilters] = useState<Partial<Record<SortKey, string>>>({});
+  const [showFilters, setShowFilters] = useState(false);
+
+  const hasActiveFilters = Object.values(filters).some((v) => v && v.trim() !== "");
+
+  const processedSources = useMemo(() => {
+    let result = [...sources];
+
+    // Apply filters
+    for (const [key, value] of Object.entries(filters)) {
+      if (!value || !value.trim()) continue;
+      const lower = value.toLowerCase();
+      result = result.filter((s) => {
+        const field = s[key as keyof SourceListItem];
+        return field != null && String(field).toLowerCase().includes(lower);
+      });
+    }
+
+    // Apply sort
+    if (sortKey) {
+      result.sort((a, b) => {
+        const aVal = a[sortKey] ?? "";
+        const bVal = b[sortKey] ?? "";
+        const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: "base" });
+        return sortDir === "asc" ? cmp : -cmp;
+      });
+    }
+
+    return result;
+  }, [sources, filters, sortKey, sortDir]);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  const handleFilterChange = (key: SortKey, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({});
+    setShowFilters(false);
+  };
 
   const renderSkeletonRows = () =>
     Array.from({ length: 5 }).map((_, i) => (
       <tr key={`skeleton-${i}`} style={{ borderBottom: "1px solid #f3f4f6" }}>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={120} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={200} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={60} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={50} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={80} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={90} /></td>
-        <td style={{ padding: "13px 16px" }}><SkeletonBlock width={90} /></td>
+        {COLUMNS.map((col) => (
+          <td key={col.key} style={{ padding: "13px 16px" }}>
+            <SkeletonBlock width={col.key === "url" ? 200 : 90} />
+          </td>
+        ))}
       </tr>
     ));
 
@@ -232,45 +304,135 @@ export default function SourcesTable({
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
       `}</style>
+
+      {/* Table toolbar */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "10px 16px",
+          borderBottom: "1px solid #f3f4f6",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              background: showFilters || hasActiveFilters ? "#f3f0ff" : "#fff",
+              color: showFilters || hasActiveFilters ? "#7c3aed" : "#6b7280",
+              border: `1px solid ${showFilters || hasActiveFilters ? "#ddd6fe" : "#e5e7eb"}`,
+            }}
+          >
+            <Search size={12} /> Filter
+          </button>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "6px 10px",
+                borderRadius: 8,
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: "pointer",
+                background: "#fef2f2",
+                color: "#dc2626",
+                border: "1px solid #fecaca",
+              }}
+            >
+              <X size={11} /> Clear filters
+            </button>
+          )}
+        </div>
+        {!isLoading && (
+          <span style={{ fontSize: 12, color: "#9ca3af" }}>
+            {processedSources.length} of {sources.length} source{sources.length !== 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr style={{ borderBottom: "2px solid #f3f0ff" }}>
             {COLUMNS.map((col) => (
               <th
-                key={col}
+                key={col.key}
+                onClick={() => handleSort(col.key)}
                 style={{
                   padding: "12px 16px",
                   textAlign: "left",
                   fontSize: 11,
                   fontWeight: 700,
-                  color: "#9ca3af",
+                  color: sortKey === col.key ? "#7c3aed" : "#9ca3af",
                   textTransform: "uppercase",
                   letterSpacing: "0.06em",
+                  cursor: "pointer",
+                  userSelect: "none",
+                  whiteSpace: "nowrap",
                 }}
               >
-                {col}
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  {col.label}
+                  <SortIcon active={sortKey === col.key} dir={sortDir} />
+                </div>
               </th>
             ))}
           </tr>
+          {showFilters && (
+            <tr style={{ borderBottom: "1px solid #f3f0ff", background: "#faf5ff" }}>
+              {COLUMNS.map((col) => (
+                <th key={`filter-${col.key}`} style={{ padding: "6px 16px" }}>
+                  {col.filterable ? (
+                    <input
+                      value={filters[col.key] || ""}
+                      onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                      placeholder={`Filter…`}
+                      style={{
+                        width: "100%",
+                        padding: "5px 8px",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 6,
+                        fontSize: 11,
+                        fontFamily: "inherit",
+                        background: "#fff",
+                        outline: "none",
+                      }}
+                    />
+                  ) : null}
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody>
           {isLoading ? (
             renderSkeletonRows()
-          ) : sources.length === 0 ? (
+          ) : processedSources.length === 0 ? (
             <tr>
               <td
                 colSpan={COLUMNS.length}
                 style={{ padding: 48, textAlign: "center", color: "#9ca3af", fontSize: 14 }}
               >
-                {emptyMessage}
+                {hasActiveFilters ? "No sources match the current filters." : emptyMessage}
               </td>
             </tr>
           ) : (
-            sources.map(renderRow)
+            processedSources.map(renderRow)
           )}
         </tbody>
       </table>
-      {!isLoading && sources.length > 0 && renderPagination()}
+      {!isLoading && processedSources.length > 0 && renderPagination()}
     </div>
   );
 }

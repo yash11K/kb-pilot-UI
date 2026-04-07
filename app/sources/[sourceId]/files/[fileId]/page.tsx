@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -25,13 +25,13 @@ import {
   rejectFile,
   updateFileContent,
   revalidateFile,
+  revalidateUniqueness,
   getDeepLinks,
   confirmDeepLinks,
 } from "@/lib/api";
 import {
   STATUS_CONFIG,
   scoreColor,
-  scoreBg,
   DEEP_LINK_STATUS_CONFIG,
 } from "@/lib/types";
 import { useToast } from "@/components/Toast";
@@ -65,6 +65,45 @@ function parseFrontmatter(content: string): Record<string, string> {
     }
   }
   return result;
+}
+
+/* ─── Resizable Sidebar Hook ─────────────────────────────── */
+
+function useResizableSidebar(initialWidth = 360, minWidth = 280, maxWidth = 600) {
+  const [width, setWidth] = useState(initialWidth);
+  const isDragging = useRef(false);
+  const startX = useRef(0);
+  const startWidth = useRef(initialWidth);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    isDragging.current = true;
+    startX.current = e.clientX;
+    startWidth.current = width;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [width]);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = startX.current - e.clientX;
+      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth.current + delta));
+      setWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [minWidth, maxWidth]);
+
+  return { width, onMouseDown };
 }
 
 /* ─── Deep Links Panel ───────────────────────────────────── */
@@ -229,10 +268,13 @@ export default function FileReviewPage() {
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [revalidating, setRevalidating] = useState(false);
+  const [recheckingUniqueness, setRecheckingUniqueness] = useState(false);
   const [showReject, setShowReject] = useState(false);
   const [rejectNotes, setRejectNotes] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(true);
+  const [metadataOpen, setMetadataOpen] = useState(true);
   const [deepLinksOpen, setDeepLinksOpen] = useState(true);
+
+  const { width: sidebarWidth, onMouseDown: onDragStart } = useResizableSidebar(360, 280, 600);
 
   const reviewer = process.env.NEXT_PUBLIC_REVIEWER_EMAIL || "reviewer@example.com";
   const canAct = file?.status === "pending_review";
@@ -282,6 +324,20 @@ export default function FileReviewPage() {
       showToast(err instanceof Error ? err.message : "Revalidation failed", "error");
     } finally {
       setRevalidating(false);
+    }
+  };
+
+  const handleRecheckUniqueness = async () => {
+    setRecheckingUniqueness(true);
+    try {
+      const updated = await revalidateUniqueness(fileId);
+      await mutateFile(updated, { revalidate: false });
+      await invalidateCache();
+      showToast("Uniqueness check complete", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Uniqueness service unavailable", "error");
+    } finally {
+      setRecheckingUniqueness(false);
     }
   };
 
@@ -372,196 +428,271 @@ export default function FileReviewPage() {
 
       {/* ── Main Content ── */}
       {file && !isLoading && (
-        <>
-          <div style={{ flex: 1, overflow: "auto", display: "flex" }}>
-            {/* Left: Content Preview */}
-            <div style={{ flex: 1, padding: 32, overflow: "auto", borderRight: "1px solid #f3f4f6" }}>
-              {/* File header */}
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
-                {sc && <Badge label={sc.label} color={sc.color} bg={sc.bg} />}
-                <ScorePill score={file.validation_score} />
-                <Badge label={file.content_type} color="#7c3aed" bg="#f3f0ff" />
-              </div>
-              <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 4px" }}>
-                {file.title || file.filename}
-              </h1>
-              <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 20, fontFamily: "var(--font-dm-mono), 'DM Mono', monospace" }}>
-                {file.filename} · {file.region}/{file.brand} · {fmtDate(file.created_at)}
-              </div>
+        <div style={{ flex: 1, overflow: "auto", display: "flex" }}>
+          {/* Left: Content Preview */}
+          <div style={{ flex: 1, padding: 32, overflow: "auto", borderRight: "1px solid #f3f4f6" }}>
+            {/* File header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6, flexWrap: "wrap" }}>
+              {sc && <Badge label={sc.label} color={sc.color} bg={sc.bg} />}
+              <ScorePill score={file.validation_score} />
+              <Badge label={file.content_type} color="#7c3aed" bg="#f3f0ff" />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: "#111827", margin: "0 0 4px" }}>
+              {file.title || file.filename}
+            </h1>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 20, fontFamily: "var(--font-dm-mono), 'DM Mono', monospace" }}>
+              {file.filename} · {file.region}/{file.brand} · {fmtDate(file.created_at)}
+            </div>
 
-              {/* Edit toggle */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                  {editing ? "Edit Content" : "Content Preview"}
-                </span>
-                {canAct && (
-                  <button
-                    onClick={() => { setEditContent(file.md_content); setEditing(!editing); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8,
-                      fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
-                      background: editing ? "#fef2f2" : "#f3f0ff",
-                      color: editing ? "#dc2626" : "#7c3aed",
-                    }}
-                  >
-                    {editing ? <><X size={13} /> Cancel</> : <><Edit size={13} /> Edit</>}
-                  </button>
-                )}
-              </div>
-
-              {editing ? (
-                <div>
-                  <textarea
-                    value={editContent}
-                    onChange={(e) => setEditContent(e.target.value)}
-                    style={{
-                      width: "100%", minHeight: 400, border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 20,
-                      fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", fontSize: 13, lineHeight: 1.7,
-                      resize: "vertical", outline: "none", color: "#1f2937", background: "#fafafa", boxSizing: "border-box",
-                    }}
-                  />
-                  <button onClick={handleSaveContent} style={{ marginTop: 10, padding: "10px 24px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                    Save Changes
-                  </button>
-                </div>
-              ) : (
-                <MdPreview content={file.md_content} />
+            {/* Edit toggle */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {editing ? "Edit Content" : "Content Preview"}
+              </span>
+              {canAct && (
+                <button
+                  onClick={() => { setEditContent(file.md_content); setEditing(!editing); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 8,
+                    fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer",
+                    background: editing ? "#fef2f2" : "#f3f0ff",
+                    color: editing ? "#dc2626" : "#7c3aed",
+                  }}
+                >
+                  {editing ? <><X size={13} /> Cancel</> : <><Edit size={13} /> Edit</>}
+                </button>
               )}
             </div>
 
-            {/* Right: Details + Deep Links */}
-            <div style={{ width: 360, flexShrink: 0, padding: 24, overflow: "auto" }}>
-              {/* ── File Details Section ── */}
-              <div style={{ borderBottom: "1px solid #ede9fe", marginBottom: 16 }}>
-                <button
-                  onClick={() => setDetailsOpen(!detailsOpen)}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
-                >
-                  {detailsOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>File Details</span>
-                  <span style={{ marginLeft: "auto", padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700, color: scoreColor(file.validation_score), background: scoreBg(file.validation_score) }}>
-                    {Math.round(file.validation_score * 100)}%
-                  </span>
+            {editing ? (
+              <div>
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  style={{
+                    width: "100%", minHeight: 400, border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 20,
+                    fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", fontSize: 13, lineHeight: 1.7,
+                    resize: "vertical", outline: "none", color: "#1f2937", background: "#fafafa", boxSizing: "border-box",
+                  }}
+                />
+                <button onClick={handleSaveContent} style={{ marginTop: 10, padding: "10px 24px", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                  Save Changes
                 </button>
+              </div>
+            ) : (
+              <MdPreview content={file.md_content} />
+            )}
+          </div>
 
-                {detailsOpen && (
-                  <div style={{ paddingBottom: 12 }}>
-                    {/* YAML Metadata */}
-                    {fmKeys.length > 0 && (
-                      <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
-                        <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9333ea", marginBottom: 8 }}>YAML Metadata</div>
-                        {fmKeys.map((key) => (
-                          <div key={key} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #ede9fe" }}>
-                            <span style={{ fontSize: 10.5, color: "#7c3aed", fontWeight: 600 }}>{key}</span>
-                            <span style={{ fontSize: 10.5, color: "#6b21a8", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {frontmatter[key]}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+          {/* Resize Handle */}
+          <div
+            onMouseDown={onDragStart}
+            style={{
+              width: 6,
+              cursor: "col-resize",
+              background: "transparent",
+              flexShrink: 0,
+              position: "relative",
+              zIndex: 10,
+            }}
+          >
+            <div style={{
+              position: "absolute",
+              top: 0,
+              bottom: 0,
+              left: 2,
+              width: 2,
+              background: "#e5e7eb",
+              transition: "background 0.15s",
+            }} />
+          </div>
 
-                    {/* Score breakdown */}
-                    <ScoreBreakdown breakdown={file.validation_breakdown} />
-                    <button
-                      onClick={handleRevalidate}
-                      disabled={revalidating}
-                      style={{
-                        marginTop: 10, width: "100%", padding: "8px 0",
-                        background: revalidating ? "#f3f4f6" : "#f3f0ff",
-                        color: revalidating ? "#9ca3af" : "#7c3aed",
-                        border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600,
-                        cursor: revalidating ? "default" : "pointer",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                      }}
-                    >
-                      <RotateCw size={13} style={revalidating ? { animation: "spin 0.8s linear infinite" } : undefined} />
-                      {revalidating ? "Revalidating…" : "Revalidate"}
-                    </button>
+          {/* Right: Sidebar */}
+          <div style={{ width: sidebarWidth, flexShrink: 0, padding: 24, overflow: "auto" }}>
 
-                    {/* Issues */}
-                    {file.validation_issues?.length > 0 && (
-                      <div style={{ marginTop: 10 }}>
-                        {file.validation_issues.map((iss, i) => (
-                          <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", marginBottom: 4 }}>{iss}</div>
-                        ))}
-                      </div>
-                    )}
+            {/* ── Title + Status + Doc Type ── */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {sc && <Badge label={sc.label} color={sc.color} bg={sc.bg} />}
+              {file.doc_type && <Badge label={file.doc_type} color="#7c3aed" bg="#f3f0ff" />}
+            </div>
 
-                    {/* Source metadata */}
-                    <div style={{ marginTop: 10 }}>
-                      {([
-                        ["AEM URL", file.source_url?.split("/").slice(-2).join("/")],
-                        ["Component", file.component_type?.split("/").pop()],
-                        ["Node ID", file.aem_node_id],
-                        ["S3 Key", file.s3_key || "—"],
-                      ] as [string, string][]).map(([k, v]) => (
-                        <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f4f6" }}>
-                          <span style={{ fontSize: 10.5, color: "#9ca3af", fontWeight: 600 }}>{k}</span>
-                          <span style={{ fontSize: 10.5, color: "#374151", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</span>
+            {/* ── Accept / Reject buttons ── */}
+            {canAct && !showReject && (
+              <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                <button onClick={handleAccept} style={{ flex: 1, padding: "9px 0", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  <Check size={14} color="#fff" /> Accept
+                </button>
+                <button onClick={() => setShowReject(true)} style={{ flex: 1, padding: "9px 0", background: "#fff", color: "#dc2626", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                  <X size={14} color="#dc2626" /> Reject
+                </button>
+              </div>
+            )}
+
+            {/* ── Reject form ── */}
+            {showReject && (
+              <div style={{ marginBottom: 12 }}>
+                <textarea
+                  value={rejectNotes}
+                  onChange={(e) => setRejectNotes(e.target.value)}
+                  placeholder="Reason for rejection (required)..."
+                  style={{ width: "100%", height: 60, border: "1.5px solid #fca5a5", borderRadius: 6, padding: 8, fontSize: 12, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+                />
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  <button onClick={handleReject} style={{ flex: 1, padding: "7px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: rejectNotes.trim() ? 1 : 0.5 }}>Confirm Reject</button>
+                  <button onClick={() => setShowReject(false)} style={{ padding: "7px 12px", background: "#f3f4f6", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", color: "#6b7280" }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Overall Score ── */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#4b5563" }}>Overall Score</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: scoreColor(file.validation_score), fontFamily: "'DM Mono', monospace" }}>
+                  {Math.round(file.validation_score)}<span style={{ color: "#9ca3af", fontWeight: 400 }}> / 30</span>
+                </span>
+              </div>
+              <div style={{ height: 8, background: "#f3f4f6", borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", borderRadius: 4, background: scoreColor(file.validation_score), transition: "width 0.5s ease", width: `${(file.validation_score / 30) * 100}%` }} />
+              </div>
+            </div>
+
+            {/* ── Revalidate CTA ── */}
+            <button
+              onClick={handleRevalidate}
+              disabled={revalidating}
+              style={{
+                marginTop: 4, width: "100%", padding: "8px 0",
+                background: revalidating ? "#f3f4f6" : "#f3f0ff",
+                color: revalidating ? "#9ca3af" : "#7c3aed",
+                border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                cursor: revalidating ? "default" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+              }}
+            >
+              <RotateCw size={13} style={revalidating ? { animation: "spin 0.8s linear infinite" } : undefined} />
+              {revalidating ? "Revalidating…" : "Revalidate"}
+            </button>
+
+            {/* ── Score Breakdown (3 equal-width bars) ── */}
+            <div style={{ marginTop: 14 }}>
+              <ScoreBreakdown breakdown={file.validation_breakdown} />
+            </div>
+
+            {/* ── Uniqueness Insight ── */}
+            <div style={{ marginTop: 14, padding: "10px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16a34a", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+                ★ Uniqueness Insight
+              </div>
+              {file.uniqueness_insight ? (
+                <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.5, fontStyle: "italic" }}>
+                  &ldquo;{file.uniqueness_insight}&rdquo;
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                  No uniqueness data available — run uniqueness check
+                </div>
+              )}
+              <button
+                onClick={handleRecheckUniqueness}
+                disabled={recheckingUniqueness}
+                style={{
+                  marginTop: 8, width: "100%", padding: "6px 0",
+                  background: recheckingUniqueness ? "#f3f4f6" : file.uniqueness_insight ? "#ecfdf5" : "#16a34a",
+                  color: recheckingUniqueness ? "#9ca3af" : file.uniqueness_insight ? "#16a34a" : "#fff",
+                  border: file.uniqueness_insight ? "1px solid #bbf7d0" : "none",
+                  borderRadius: 7, fontSize: 11, fontWeight: 600,
+                  cursor: recheckingUniqueness ? "default" : "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                }}
+              >
+                <RotateCw size={11} style={recheckingUniqueness ? { animation: "spin 0.8s linear infinite" } : undefined} />
+                {recheckingUniqueness ? "Checking…" : "Re-check Uniqueness"}
+              </button>
+            </div>
+
+            {/* ── Validation Issues ── */}
+            {file.validation_issues?.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#92400e", marginBottom: 6 }}>Issues / Assessment</div>
+                {file.validation_issues.map((iss: string, i: number) => (
+                  <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", marginBottom: 4 }}>{iss}</div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Reviewed by ── */}
+            {file.reviewed_by && (
+              <div style={{ padding: "8px 10px", background: "#f9fafb", borderRadius: 8, marginTop: 10 }}>
+                <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, marginBottom: 2 }}>Reviewed by</div>
+                <div style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{file.reviewed_by}</div>
+                {file.review_notes && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>&ldquo;{file.review_notes}&rdquo;</div>}
+              </div>
+            )}
+
+            {/* ── Metadata Section (collapsible, renamed from "File Details") ── */}
+            <div style={{ borderTop: "1px solid #ede9fe", marginTop: 16, paddingTop: 4 }}>
+              <button
+                onClick={() => setMetadataOpen(!metadataOpen)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+              >
+                {metadataOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>Metadata</span>
+              </button>
+
+              {metadataOpen && (
+                <div style={{ paddingBottom: 12 }}>
+                  {/* YAML Metadata */}
+                  {fmKeys.length > 0 && (
+                    <div style={{ background: "#faf5ff", border: "1px solid #e9d5ff", borderRadius: 10, padding: 12, marginBottom: 12 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9333ea", marginBottom: 8 }}>YAML Metadata</div>
+                      {fmKeys.map((key) => (
+                        <div key={key} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "3px 0", borderBottom: "1px solid #ede9fe" }}>
+                          <span style={{ fontSize: 10.5, color: "#7c3aed", fontWeight: 600, flexShrink: 0 }}>{key}</span>
+                          <span style={{ fontSize: 10.5, color: "#6b21a8", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", wordBreak: "break-all", textAlign: "right" }}>
+                            {frontmatter[key]}
+                          </span>
                         </div>
                       ))}
                     </div>
+                  )}
 
-                    {/* Reject form */}
-                    {showReject && (
-                      <div style={{ marginTop: 10 }}>
-                        <textarea
-                          value={rejectNotes}
-                          onChange={(e) => setRejectNotes(e.target.value)}
-                          placeholder="Reason for rejection (required)..."
-                          style={{ width: "100%", height: 60, border: "1.5px solid #fca5a5", borderRadius: 6, padding: 8, fontSize: 12, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-                        />
-                        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                          <button onClick={handleReject} style={{ flex: 1, padding: "7px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: rejectNotes.trim() ? 1 : 0.5 }}>Confirm Reject</button>
-                          <button onClick={() => setShowReject(false)} style={{ padding: "7px 12px", background: "#f3f4f6", border: "none", borderRadius: 6, fontSize: 12, cursor: "pointer", color: "#6b7280" }}>Cancel</button>
-                        </div>
+                  {/* Source metadata */}
+                  <div>
+                    {([
+                      ["AEM URL", file.source_url?.split("/").slice(-2).join("/")],
+                      ["Component", file.component_type?.split("/").pop()],
+                      ["Node ID", file.aem_node_id],
+                      ["S3 Key", file.s3_key || "—"],
+                    ] as [string, string][]).map(([k, v]) => (
+                      <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0", borderBottom: "1px solid #f3f4f6" }}>
+                        <span style={{ fontSize: 10.5, color: "#9ca3af", fontWeight: 600, flexShrink: 0 }}>{k}</span>
+                        <span style={{ fontSize: 10.5, color: "#374151", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", wordBreak: "break-all", textAlign: "right" }}>{v}</span>
                       </div>
-                    )}
-
-                    {/* Action buttons */}
-                    {canAct && !showReject && (
-                      <div style={{ display: "flex", gap: 6, marginTop: 10 }}>
-                        <button onClick={handleAccept} style={{ flex: 1, padding: "9px 0", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                          <Check size={14} color="#fff" /> Accept
-                        </button>
-                        <button onClick={() => setShowReject(true)} style={{ flex: 1, padding: "9px 0", background: "#fff", color: "#dc2626", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                          <X size={14} color="#dc2626" /> Reject
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Reviewed by */}
-                    {file.reviewed_by && (
-                      <div style={{ padding: "8px 10px", background: "#f9fafb", borderRadius: 8, marginTop: 10 }}>
-                        <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, marginBottom: 2 }}>Reviewed by</div>
-                        <div style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{file.reviewed_by}</div>
-                        {file.review_notes && <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>&ldquo;{file.review_notes}&rdquo;</div>}
-                      </div>
-                    )}
+                    ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
+            </div>
 
-              {/* ── Deep Links Section ── */}
-              <div style={{ borderBottom: "1px solid #ede9fe", marginBottom: 16 }}>
-                <button
-                  onClick={() => setDeepLinksOpen(!deepLinksOpen)}
-                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
-                >
-                  {deepLinksOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
-                  <Link2 size={13} color="#7c3aed" />
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>Deep Links</span>
-                </button>
-                {deepLinksOpen && (
-                  <div style={{ paddingBottom: 12 }}>
-                    <DeepLinksPanel sourceId={sourceId} sourceUrl={file.source_url} />
-                  </div>
-                )}
-              </div>
+            {/* ── Deep Links Section ── */}
+            <div style={{ borderTop: "1px solid #ede9fe", marginTop: 16, paddingTop: 4 }}>
+              <button
+                onClick={() => setDeepLinksOpen(!deepLinksOpen)}
+                style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, padding: "10px 0", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}
+              >
+                {deepLinksOpen ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
+                <Link2 size={13} color="#7c3aed" />
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>Deep Links</span>
+              </button>
+              {deepLinksOpen && (
+                <div style={{ paddingBottom: 12 }}>
+                  <DeepLinksPanel sourceId={sourceId} sourceUrl={file.source_url} />
+                </div>
+              )}
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

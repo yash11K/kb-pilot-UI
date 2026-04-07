@@ -6,6 +6,7 @@ interface ScorePillProps {
 }
 
 export default function ScorePill({ score, large }: ScorePillProps) {
+  const pct = Math.round((score / 30) * 100);
   return (
     <span
       style={{
@@ -29,7 +30,7 @@ export default function ScorePill({ score, large }: ScorePillProps) {
           background: scoreColor(score),
         }}
       />
-      {Math.round(score * 100)}%
+      {pct}%
     </span>
   );
 }

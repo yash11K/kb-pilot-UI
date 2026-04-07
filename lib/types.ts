@@ -16,6 +16,20 @@ export interface ValidationBreakdown {
   uniqueness: number;
 }
 
+/** Per-dimension score color (0–10 scale) */
+export function dimensionColor(score: number): string {
+  if (score >= 8) return "#16a34a";
+  if (score >= 5) return "#d97706";
+  return "#dc2626";
+}
+
+/** Per-dimension score background (0–10 scale) */
+export function dimensionBg(score: number): string {
+  if (score >= 8) return "#f0fdf4";
+  if (score >= 5) return "#fffbeb";
+  return "#fef2f2";
+}
+
 /** Full file model (returned by detail endpoints) */
 export interface KBFile {
   id: string;
@@ -36,6 +50,7 @@ export interface KBFile {
   validation_score: number;
   validation_breakdown: ValidationBreakdown;
   validation_issues: string[];
+  uniqueness_insight: string | null;
   status: FileStatus;
   s3_bucket: string | null;
   s3_key: string | null;
@@ -263,15 +278,17 @@ export const STATUS_CONFIG: Record<FileStatus, { label: string; color: string; b
   pending_validation: { label: "Validating",     color: "#6b7280", bg: "#f3f4f6" },
 };
 
+/** Total score color (0–30 scale) */
 export function scoreColor(score: number): string {
-  if (score >= 0.7) return "#16a34a";
-  if (score >= 0.2) return "#d97706";
+  if (score >= 21) return "#16a34a";
+  if (score >= 6) return "#d97706";
   return "#dc2626";
 }
 
+/** Total score background (0–30 scale) */
 export function scoreBg(score: number): string {
-  if (score >= 0.7) return "#f0fdf4";
-  if (score >= 0.2) return "#fffbeb";
+  if (score >= 21) return "#f0fdf4";
+  if (score >= 6) return "#fffbeb";
   return "#fef2f2";
 }
 

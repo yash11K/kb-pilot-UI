@@ -14,9 +14,10 @@ import {
   X,
 } from "lucide-react";
 import ScoreBreakdown from "@/components/ScoreBreakdown";
+import ScorePill from "@/components/ScorePill";
 import Badge from "@/components/Badge";
 import MdPreview from "@/components/MdPreview";
-import { scoreColor, scoreBg, DEEP_LINK_STATUS_CONFIG } from "@/lib/types";
+import { DEEP_LINK_STATUS_CONFIG, scoreColor } from "@/lib/types";
 import { getDeepLinks, confirmDeepLinks } from "@/lib/api";
 import { streamContextChat } from "@/lib/api";
 import { useToast } from "@/components/Toast";
@@ -26,9 +27,11 @@ interface FileDetailsCollapsibleProps {
   file: KBFile;
   canAct: boolean;
   revalidating: boolean;
+  recheckingUniqueness: boolean;
   showReject: boolean;
   rejectNotes: string;
   onRevalidate: () => void;
+  onRecheckUniqueness: () => void;
   onAccept: () => void;
   onReject: () => void;
   onShowReject: (show: boolean) => void;
@@ -212,7 +215,6 @@ function ContextAgentSection({ fileId }: { fileId: string }) {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversation]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
   }, []);
@@ -261,7 +263,6 @@ function ContextAgentSection({ fileId }: { fileId: string }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      {/* Conversation */}
       {conversation.length > 0 && (
         <div style={{ maxHeight: 200, overflow: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
           {conversation.map((msg, i) => (
@@ -284,14 +285,12 @@ function ContextAgentSection({ fileId }: { fileId: string }) {
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div style={{ padding: "6px 10px", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 6, fontSize: 11, color: "#991b1b" }}>
           {error}
         </div>
       )}
 
-      {/* Input */}
       <div style={{ display: "flex", gap: 6 }}>
         <input
           type="text"
@@ -338,19 +337,20 @@ export default function FileDetailsCollapsible({
   file,
   canAct,
   revalidating,
+  recheckingUniqueness,
   showReject,
   rejectNotes,
   onRevalidate,
+  onRecheckUniqueness,
   onAccept,
   onReject,
   onShowReject,
   onRejectNotesChange,
 }: FileDetailsCollapsibleProps) {
-  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [metadataExpanded, setMetadataExpanded] = useState(false);
   const [deepLinksExpanded, setDeepLinksExpanded] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
 
-  const score = file.validation_score;
   const issueCount = file.validation_issues?.length ?? 0;
   const frontmatter = parseFrontmatter(file.md_content);
   const fmKeys = Object.keys(frontmatter);
@@ -361,10 +361,148 @@ export default function FileDetailsCollapsible({
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
-      {/* ── Section 1: File Details ── */}
-      <div style={{ borderBottom: "1px solid #ede9fe", marginBottom: 12 }}>
+      {/* ── Overall Score ── */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#4b5563" }}>Overall Score</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: scoreColor(file.validation_score), fontFamily: "'DM Mono', monospace" }}>
+            {Math.round(file.validation_score)}<span style={{ color: "#9ca3af", fontWeight: 400 }}> / 30</span>
+          </span>
+        </div>
+        <div style={{ height: 8, background: "#f3f4f6", borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ height: "100%", borderRadius: 4, background: scoreColor(file.validation_score), transition: "width 0.5s ease", width: `${(file.validation_score / 30) * 100}%` }} />
+        </div>
+      </div>
+
+      {/* ── Revalidate CTA (top-level) ── */}
+      <button
+        onClick={onRevalidate}
+        disabled={revalidating}
+        style={{
+          marginTop: 4,
+          width: "100%",
+          padding: "7px 0",
+          background: revalidating ? "#f3f4f6" : "#f3f0ff",
+          color: revalidating ? "#9ca3af" : "#7c3aed",
+          border: "none",
+          borderRadius: 8,
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: revalidating ? "default" : "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 5,
+        }}
+      >
+        <RotateCw size={12} style={revalidating ? { animation: "spin 0.8s linear infinite" } : undefined} />
+        {revalidating ? "Revalidating\u2026" : "Revalidate"}
+      </button>
+
+      {/* ── Validation Scores Breakdown ── */}
+      <div style={{ marginTop: 12 }}>
+        <ScoreBreakdown breakdown={file.validation_breakdown} />
+      </div>
+
+      {/* ── Uniqueness Insight ── */}
+      <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16a34a", marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+          ★ Uniqueness Insight
+        </div>
+        {file.uniqueness_insight ? (
+          <div style={{ fontSize: 12, color: "#374151", lineHeight: 1.5, fontStyle: "italic" }}>
+            &ldquo;{file.uniqueness_insight}&rdquo;
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#9ca3af" }}>
+            No uniqueness data available — run uniqueness check
+          </div>
+        )}
         <button
-          onClick={() => setDetailsExpanded(!detailsExpanded)}
+          onClick={onRecheckUniqueness}
+          disabled={recheckingUniqueness}
+          style={{
+            marginTop: 8,
+            width: "100%",
+            padding: "6px 0",
+            background: recheckingUniqueness ? "#f3f4f6" : file.uniqueness_insight ? "#ecfdf5" : "#16a34a",
+            color: recheckingUniqueness ? "#9ca3af" : file.uniqueness_insight ? "#16a34a" : "#fff",
+            border: file.uniqueness_insight ? "1px solid #bbf7d0" : "none",
+            borderRadius: 7,
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: recheckingUniqueness ? "default" : "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 5,
+          }}
+        >
+          <RotateCw size={11} style={recheckingUniqueness ? { animation: "spin 0.8s linear infinite" } : undefined} />
+          {recheckingUniqueness ? "Checking\u2026" : "Re-check Uniqueness"}
+        </button>
+      </div>
+
+      {/* ── Validation Issues (top-level) ── */}
+      {issueCount > 0 && (
+        <div style={{ marginTop: 8 }}>
+          {file.validation_issues.map((iss, i) => (
+            <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", marginBottom: 4 }}>
+              {iss}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Reject form (top-level) ── */}
+      {showReject && (
+        <div style={{ marginTop: 8 }}>
+          <textarea
+            value={rejectNotes}
+            onChange={(e) => onRejectNotesChange(e.target.value)}
+            placeholder="Reason for rejection (required)..."
+            style={{ width: "100%", height: 60, border: "1.5px solid #fca5a5", borderRadius: 6, padding: 8, fontSize: 11, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+          />
+          <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+            <button onClick={onReject} style={{ flex: 1, padding: "6px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", opacity: rejectNotes.trim() ? 1 : 0.5 }}>
+              Confirm Reject
+            </button>
+            <button onClick={() => onShowReject(false)} style={{ padding: "6px 10px", background: "#f3f4f6", border: "none", borderRadius: 6, fontSize: 11, cursor: "pointer", color: "#6b7280" }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Accept / Reject buttons (top-level) ── */}
+      {canAct && !showReject && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+          <button onClick={onAccept} style={{ flex: 1, padding: "8px 0", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <Check size={13} color="#fff" /> Accept
+          </button>
+          <button onClick={() => onShowReject(true)} style={{ flex: 1, padding: "8px 0", background: "#fff", color: "#dc2626", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <X size={13} color="#dc2626" /> Reject
+          </button>
+        </div>
+      )}
+
+      {/* ── Reviewed by (top-level) ── */}
+      {file.reviewed_by && (
+        <div style={{ padding: "8px 10px", background: "#f9fafb", borderRadius: 8, marginTop: 8 }}>
+          <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, marginBottom: 2 }}>Reviewed by</div>
+          <div style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{file.reviewed_by}</div>
+          {file.review_notes && (
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>
+              &ldquo;{file.review_notes}&rdquo;
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Section: Metadata (renamed from "File Details") ── */}
+      <div style={{ borderTop: "1px solid #ede9fe", marginTop: 12, paddingTop: 4 }}>
+        <button
+          onClick={() => setMetadataExpanded(!metadataExpanded)}
           style={{
             width: "100%",
             display: "flex",
@@ -377,23 +515,13 @@ export default function FileDetailsCollapsible({
             textAlign: "left",
           }}
         >
-          {detailsExpanded ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
+          {metadataExpanded ? <ChevronDown size={14} color="#6b7280" /> : <ChevronRight size={14} color="#6b7280" />}
           <span style={{ fontSize: 12, fontWeight: 700, color: "#4b5563", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            File Details
-          </span>
-          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}>
-            <span style={{ padding: "2px 8px", borderRadius: 6, fontSize: 12, fontWeight: 700, color: scoreColor(score), background: scoreBg(score) }}>
-              {Math.round(score * 100)}%
-            </span>
-            {issueCount > 0 && (
-              <span style={{ fontSize: 11, color: "#92400e", background: "#fffbeb", padding: "2px 6px", borderRadius: 4, fontWeight: 600 }}>
-                {issueCount} issue{issueCount > 1 ? "s" : ""}
-              </span>
-            )}
+            Metadata
           </span>
         </button>
 
-        {detailsExpanded && (
+        {metadataExpanded && (
           <div style={{ paddingBottom: 12 }}>
             {/* YAML Frontmatter Metadata */}
             {fmKeys.length > 0 && (
@@ -404,10 +532,10 @@ export default function FileDetailsCollapsible({
                 {fmKeys.map((key) => (
                   <div
                     key={key}
-                    style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", borderBottom: "1px solid #ede9fe" }}
+                    style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "3px 0", borderBottom: "1px solid #ede9fe" }}
                   >
-                    <span style={{ fontSize: 10, color: "#7c3aed", fontWeight: 600 }}>{key}</span>
-                    <span style={{ fontSize: 10, color: "#6b21a8", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ fontSize: 10, color: "#7c3aed", fontWeight: 600, flexShrink: 0 }}>{key}</span>
+                    <span style={{ fontSize: 10, color: "#6b21a8", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", wordBreak: "break-all", textAlign: "right" }}>
                       {frontmatter[key]}
                     </span>
                   </div>
@@ -415,112 +543,28 @@ export default function FileDetailsCollapsible({
               </div>
             )}
 
-            {/* Score breakdown */}
-            <div style={{ marginBottom: 12 }}>
-              <ScoreBreakdown breakdown={file.validation_breakdown} />
-              <button
-                onClick={onRevalidate}
-                disabled={revalidating}
-                style={{
-                  marginTop: 8,
-                  width: "100%",
-                  padding: "7px 0",
-                  background: revalidating ? "#f3f4f6" : "#f3f0ff",
-                  color: revalidating ? "#9ca3af" : "#7c3aed",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: revalidating ? "default" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 5,
-                }}
-              >
-                <RotateCw size={12} style={revalidating ? { animation: "spin 0.8s linear infinite" } : undefined} />
-                {revalidating ? "Revalidating\u2026" : "Revalidate"}
-              </button>
-            </div>
-
-            {/* Issues */}
-            {issueCount > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                {file.validation_issues.map((iss, i) => (
-                  <div key={i} style={{ padding: "6px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, color: "#92400e", marginBottom: 4 }}>
-                    {iss}
-                  </div>
-                ))}
-              </div>
-            )}
-
             {/* Source metadata */}
-            <div style={{ marginBottom: 12 }}>
+            <div>
               {([
                 ["AEM URL", file.source_url?.split("/").slice(-2).join("/")],
                 ["Component", file.component_type?.split("/").pop()],
                 ["Node ID", file.aem_node_id],
                 ["S3 Key", file.s3_key || "\u2014"],
               ] as [string, string][]).map(([k, v]) => (
-                <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f3f4f6" }}>
-                  <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600 }}>{k}</span>
-                  <span style={{ fontSize: 10, color: "#374151", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 12, padding: "4px 0", borderBottom: "1px solid #f3f4f6" }}>
+                  <span style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, flexShrink: 0 }}>{k}</span>
+                  <span style={{ fontSize: 10, color: "#374151", fontFamily: "var(--font-dm-mono), 'DM Mono', monospace", wordBreak: "break-all", textAlign: "right" }}>
                     {v}
                   </span>
                 </div>
               ))}
             </div>
-
-            {/* Reject form */}
-            {showReject && (
-              <div style={{ marginBottom: 10 }}>
-                <textarea
-                  value={rejectNotes}
-                  onChange={(e) => onRejectNotesChange(e.target.value)}
-                  placeholder="Reason for rejection (required)..."
-                  style={{ width: "100%", height: 60, border: "1.5px solid #fca5a5", borderRadius: 6, padding: 8, fontSize: 11, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-                />
-                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                  <button onClick={onReject} style={{ flex: 1, padding: "6px 0", background: "#dc2626", color: "#fff", border: "none", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", opacity: rejectNotes.trim() ? 1 : 0.5 }}>
-                    Confirm Reject
-                  </button>
-                  <button onClick={() => onShowReject(false)} style={{ padding: "6px 10px", background: "#f3f4f6", border: "none", borderRadius: 6, fontSize: 11, cursor: "pointer", color: "#6b7280" }}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Action buttons */}
-            {canAct && !showReject && (
-              <div style={{ display: "flex", gap: 6 }}>
-                <button onClick={onAccept} style={{ flex: 1, padding: "8px 0", background: "#7c3aed", color: "#fff", border: "none", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                  <Check size={13} color="#fff" /> Accept
-                </button>
-                <button onClick={() => onShowReject(true)} style={{ flex: 1, padding: "8px 0", background: "#fff", color: "#dc2626", border: "1.5px solid #fca5a5", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-                  <X size={13} color="#dc2626" /> Reject
-                </button>
-              </div>
-            )}
-
-            {/* Reviewed by */}
-            {file.reviewed_by && (
-              <div style={{ padding: "8px 10px", background: "#f9fafb", borderRadius: 8, marginTop: 8 }}>
-                <div style={{ fontSize: 10, color: "#9ca3af", fontWeight: 600, marginBottom: 2 }}>Reviewed by</div>
-                <div style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>{file.reviewed_by}</div>
-                {file.review_notes && (
-                  <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4, fontStyle: "italic" }}>
-                    &ldquo;{file.review_notes}&rdquo;
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* ── Section 2: Deep Links ── */}
-      <div style={{ borderBottom: "1px solid #ede9fe", marginBottom: 12 }}>
+      {/* ── Section: Deep Links ── */}
+      <div style={{ borderTop: "1px solid #ede9fe", marginTop: 12, paddingTop: 4 }}>
         <button
           onClick={() => setDeepLinksExpanded(!deepLinksExpanded)}
           style={{
@@ -555,8 +599,8 @@ export default function FileDetailsCollapsible({
         )}
       </div>
 
-      {/* ── Section 3: Context Agent ── */}
-      <div style={{ borderBottom: "1px solid #ede9fe", marginBottom: 12 }}>
+      {/* ── Section: Context Agent ── */}
+      <div style={{ borderTop: "1px solid #ede9fe", marginTop: 12, paddingTop: 4 }}>
         <button
           onClick={() => setContextExpanded(!contextExpanded)}
           style={{

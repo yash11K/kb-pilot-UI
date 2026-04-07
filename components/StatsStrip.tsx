@@ -91,7 +91,7 @@ export default function StatsStrip({ activeFilter: _activeFilter }: StatsStripPr
         const active = isCardActive(card, pathname, searchParams);
         const value =
           card.key === "avg_score"
-            ? `${Math.round((stats.avg_score || 0) * 100)}%`
+            ? `${Math.round(((stats.avg_score || 0) / 30) * 100)}%`
             : stats[card.key];
 
         return (

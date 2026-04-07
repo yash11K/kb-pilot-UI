@@ -143,6 +143,17 @@ export async function revalidateFile(fileId: string): Promise<KBFile> {
   return res.json();
 }
 
+export async function revalidateUniqueness(fileId: string): Promise<KBFile> {
+  const res = await fetch(`${BASE}/files/${fileId}/revalidate-uniqueness`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Uniqueness check failed (${res.status})`);
+  }
+  return res.json();
+}
+
 export async function batchRevalidate(
   fileIds: string[],
 ): Promise<BatchRevalidateResponse> {
@@ -154,6 +165,21 @@ export async function batchRevalidate(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Batch revalidation failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function batchRevalidateUniqueness(
+  fileIds: string[],
+): Promise<BatchRevalidateResponse> {
+  const res = await fetch(`${BASE}/revalidate-uniqueness`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ file_ids: fileIds }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Batch uniqueness check failed (${res.status})`);
   }
   return res.json();
 }

@@ -9,13 +9,9 @@ import IngestWizard from "@/components/IngestWizard";
 
 export default function SourcesPage() {
   const [page, setPage] = useState(1);
-  const [regionFilter, setRegionFilter] = useState("");
-  const [brandFilter, setBrandFilter] = useState("");
   const [showIngest, setShowIngest] = useState(false);
   const { activeJobs, mutate: activeJobsMutate } = useActiveJobs();
   const { data, isLoading, error, mutate } = useSources({
-    region: regionFilter || undefined,
-    brand: brandFilter || undefined,
     page,
     size: 20,
   });
@@ -56,38 +52,8 @@ export default function SourcesPage() {
         </button>
       </div>
 
-      {/* Filters */}
+      {/* Toolbar */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-        <select
-          value={regionFilter}
-          onChange={(e) => { setRegionFilter(e.target.value); setPage(1); }}
-          style={{
-            padding: "8px 12px",
-            border: "1.5px solid #e5e7eb",
-            borderRadius: 8,
-            fontSize: 13,
-            fontFamily: "inherit",
-            background: "#fff",
-          }}
-        >
-          <option value="">All Regions</option>
-          {["US", "EU", "APAC", "LATAM"].map((r) => (
-            <option key={r} value={r}>{r}</option>
-          ))}
-        </select>
-        <input
-          value={brandFilter}
-          onChange={(e) => { setBrandFilter(e.target.value); setPage(1); }}
-          placeholder="Filter by brand…"
-          style={{
-            padding: "8px 12px",
-            border: "1.5px solid #e5e7eb",
-            borderRadius: 8,
-            fontSize: 13,
-            fontFamily: "inherit",
-            width: 180,
-          }}
-        />
         <button
           onClick={() => mutate()}
           style={{

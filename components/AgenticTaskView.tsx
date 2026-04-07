@@ -49,14 +49,14 @@ function truncateUrl(url: string, maxLen = 60): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 0.7) return "#16a34a";
-  if (score >= 0.2) return "#d97706";
+  if (score >= 21) return "#16a34a";
+  if (score >= 6) return "#d97706";
   return "#dc2626";
 }
 
 function scoreBg(score: number): string {
-  if (score >= 0.7) return "#f0fdf4";
-  if (score >= 0.2) return "#fffbeb";
+  if (score >= 21) return "#f0fdf4";
+  if (score >= 6) return "#fffbeb";
   return "#fef2f2";
 }
 
@@ -758,7 +758,7 @@ function FileResultCard({ file }: { file: { filename: string; status: string; sc
             background: scoreBg(file.score),
           }}
         >
-          {(file.score * 100).toFixed(0)}%
+          {Math.round((file.score / 30) * 100)}%
         </span>
       )}
 
