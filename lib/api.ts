@@ -532,3 +532,58 @@ export function streamContextChat(
     onError,
   );
 }
+
+// ── Uniqueness Review ───────────────────────────────────────
+
+import type {
+  UniquenessReviewSession,
+  PairwiseComparison,
+  SimilarActionResponse,
+} from "./types";
+
+export async function startUniquenessReview(
+  fileId: string,
+  limit = 5,
+): Promise<UniquenessReviewSession> {
+  const res = await fetch(`${BASE}/files/${fileId}/uniqueness-review?limit=${limit}`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Uniqueness review failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function getPairwiseComparison(
+  fileId: string,
+  similarFileId: string,
+): Promise<PairwiseComparison> {
+  const res = await fetch(`${BASE}/files/${fileId}/similar/${similarFileId}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Pairwise comparison failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function takeSimilarAction(
+  fileId: string,
+  similarFileId: string,
+  action: "dismiss" | "delete" | "reject" | "keep_both",
+  reviewedBy: string,
+  notes?: string,
+): Promise<SimilarActionResponse> {
+  const body: Record<string, string> = { action, reviewed_by: reviewedBy };
+  if (notes) body.notes = notes;
+  const res = await fetch(`${BASE}/files/${fileId}/similar/${similarFileId}/action`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.detail || `Action failed (${res.status})`);
+  }
+  return res.json();
+}

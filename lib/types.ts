@@ -497,3 +497,72 @@ export interface ContextMessage {
   role: "user" | "assistant";
   content: string;
 }
+
+// ── Uniqueness Review Types ─────────────────────────────────
+
+export interface SimilarDocument {
+  file_id: string;
+  title: string;
+  source_url: string;
+  content_type: string;
+  doc_type: string;
+  region: string;
+  brand: string;
+  status: string;
+  similarity_score: number;
+  content_snippet: string;
+  md_content?: string;
+  validation_score?: number;
+  comparison_insight?: string;
+  match_source?: "bedrock_kb" | "local_search";
+}
+
+export interface UniquenessReviewSession {
+  file_id: string;
+  file_title: string;
+  file_source_url: string;
+  file_status: string;
+  file_md_content: string;
+  file_validation_score: number;
+  file_uniqueness_insight: string | null;
+  similar_documents: SimilarDocument[];
+  session_summary: string;
+}
+
+export interface PairwiseComparison {
+  source_file: Record<string, unknown>;
+  similar_file: Record<string, unknown>;
+  comparison_insight: string;
+  overlap_areas: string[];
+  unique_to_source: string[];
+  unique_to_similar: string[];
+  recommendation: "keep_both" | "merge" | "delete_similar" | "delete_source";
+}
+
+export interface SimilarActionResponse {
+  file_id: string;
+  similar_file_id: string;
+  action: string;
+  result: string;
+}
+
+/** Similarity score color (0–1 scale, higher = more similar = red) */
+export function similarityColor(score: number): string {
+  if (score > 0.7) return "#dc2626";
+  if (score >= 0.4) return "#d97706";
+  return "#16a34a";
+}
+
+/** Similarity score background */
+export function similarityBg(score: number): string {
+  if (score > 0.7) return "#fef2f2";
+  if (score >= 0.4) return "#fffbeb";
+  return "#f0fdf4";
+}
+
+export const RECOMMENDATION_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  keep_both:       { label: "Keep Both",       color: "#16a34a", bg: "#f0fdf4" },
+  merge:           { label: "Merge",           color: "#7c3aed", bg: "#f3f0ff" },
+  delete_similar:  { label: "Delete Similar",  color: "#dc2626", bg: "#fef2f2" },
+  delete_source:   { label: "Delete Source",   color: "#9f1239", bg: "#fff1f2" },
+};

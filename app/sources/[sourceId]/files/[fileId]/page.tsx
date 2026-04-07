@@ -35,6 +35,7 @@ import {
   DEEP_LINK_STATUS_CONFIG,
 } from "@/lib/types";
 import { useToast } from "@/components/Toast";
+import UniquenessWorkbench from "@/components/UniquenessWorkbench";
 import type { DeepLink } from "@/lib/types";
 import { useSWRConfig } from "swr";
 
@@ -273,6 +274,7 @@ export default function FileReviewPage() {
   const [rejectNotes, setRejectNotes] = useState("");
   const [metadataOpen, setMetadataOpen] = useState(true);
   const [deepLinksOpen, setDeepLinksOpen] = useState(true);
+  const [uniquenessWorkbenchOpen, setUniquenessWorkbenchOpen] = useState(false);
 
   const { width: sidebarWidth, onMouseDown: onDragStart } = useResizableSidebar(360, 280, 600);
 
@@ -593,22 +595,38 @@ export default function FileReviewPage() {
                   No uniqueness data available — run uniqueness check
                 </div>
               )}
-              <button
-                onClick={handleRecheckUniqueness}
-                disabled={recheckingUniqueness}
-                style={{
-                  marginTop: 8, width: "100%", padding: "6px 0",
-                  background: recheckingUniqueness ? "#f3f4f6" : file.uniqueness_insight ? "#ecfdf5" : "#16a34a",
-                  color: recheckingUniqueness ? "#9ca3af" : file.uniqueness_insight ? "#16a34a" : "#fff",
-                  border: file.uniqueness_insight ? "1px solid #bbf7d0" : "none",
-                  borderRadius: 7, fontSize: 11, fontWeight: 600,
-                  cursor: recheckingUniqueness ? "default" : "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-                }}
-              >
-                <RotateCw size={11} style={recheckingUniqueness ? { animation: "spin 0.8s linear infinite" } : undefined} />
-                {recheckingUniqueness ? "Checking…" : "Re-check Uniqueness"}
-              </button>
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button
+                  onClick={handleRecheckUniqueness}
+                  disabled={recheckingUniqueness}
+                  style={{
+                    flex: 1, padding: "6px 0",
+                    background: recheckingUniqueness ? "#f3f4f6" : file.uniqueness_insight ? "#ecfdf5" : "#16a34a",
+                    color: recheckingUniqueness ? "#9ca3af" : file.uniqueness_insight ? "#16a34a" : "#fff",
+                    border: file.uniqueness_insight ? "1px solid #bbf7d0" : "none",
+                    borderRadius: 7, fontSize: 11, fontWeight: 600,
+                    cursor: recheckingUniqueness ? "default" : "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  }}
+                >
+                  <RotateCw size={11} style={recheckingUniqueness ? { animation: "spin 0.8s linear infinite" } : undefined} />
+                  {recheckingUniqueness ? "Checking…" : "Re-check"}
+                </button>
+                <button
+                  onClick={() => setUniquenessWorkbenchOpen(true)}
+                  style={{
+                    flex: 1, padding: "6px 0",
+                    background: "#7c3aed",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 7, fontSize: 11, fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                  }}
+                >
+                  Review Uniqueness
+                </button>
+              </div>
             </div>
 
             {/* ── Validation Issues ── */}
@@ -693,6 +711,16 @@ export default function FileReviewPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Uniqueness Review Workbench ── */}
+      {uniquenessWorkbenchOpen && file && (
+        <UniquenessWorkbench
+          fileId={fileId}
+          fileMdContent={file.md_content}
+          fileTitle={file.title || file.filename}
+          onClose={() => setUniquenessWorkbenchOpen(false)}
+        />
       )}
     </div>
   );
